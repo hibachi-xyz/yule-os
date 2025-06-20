@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hibachi_xyz"
+version = "0.0.2"
+authors = [
+  { name = "Rouan van der Ende", email = "rouan@linumlabs.com" },
+  { name = "Attila Mravik", email = "attila@linumlabs.com" },
+]
+description = "Hibachi SDK for accessing the API"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "License :: OSI Approved :: MIT License",
+]
+dependencies = ["eth_keys == 0.6.1", "requests == 2.32.3", "toml == 0.10.2"]
+
+[project.urls]
+Homepage = "https://github.com/hibachi-xyz/python-sdk"
+Issues = "https://github.com/hibachi-xyz/python-sdk/issues"

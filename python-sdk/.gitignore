@@ -1,0 +1,11 @@
+/build
+/*.egg-info
+__pycache__
+/bin
+/lib
+/lib64
+.env
+.pytest_cache
+/include
+.env.local*
+/dev_ws*

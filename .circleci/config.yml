@@ -1,0 +1,60 @@
+version: 2.1
+
+parameters:
+  run_integration_tests:
+    type: boolean
+    default: false
+
+executors:
+  python-executor:
+    docker:
+      - image: cimg/python:3.11
+    working_directory: ~/repo
+
+jobs:
+  integration-tests:
+    executor: python-executor
+    steps:
+      - checkout
+      - run:
+          name: Install SDK and dependencies
+          command: |
+            pip install pytest
+            pip install ./python-sdk
+      - run:
+          name: Install SDK and test dependencies
+          command: |
+            pip install -U pip setuptools wheel
+            pip install pytest prettyprinter python-dotenv
+            pip install ./python-sdk
+
+
+  deploy-to-pypi:
+    executor: python-executor
+    steps:
+      - checkout
+      - run:
+          name: Patch version dynamically
+          command: |
+            VERSION_SUFFIX=$(date +%Y%m%d%H%M%S)
+            sed -i "s/^version = .*/version = \"0.0.1.dev$VERSION_SUFFIX\"/" python-sdk/pyproject.toml
+            grep version python-sdk/pyproject.toml
+      - run: pip install build twine
+      - run:
+          name: Build SDK
+          command: |
+            python -m build -s -w python-sdk
+      - run:
+          name: Publish to PyPI
+          command: |
+            twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
+
+
+workflows:
+  sdk-tests-and-deploy:
+    when: << pipeline.parameters.run_integration_tests >>
+    jobs:
+      - integration-tests
+      - deploy-to-pypi:
+          requires:
+            - integration-tests
