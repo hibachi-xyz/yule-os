@@ -32,7 +32,6 @@ jobs:
       - run:
           name: Run integration tests
           command: |
-            cp python-sdk/.env.test .env
             pytest python-sdk/
       - slack/notify:
           event: fail
