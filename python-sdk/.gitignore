@@ -9,4 +9,3 @@ __pycache__
 /include
 .env.local*
 /dev_ws*
-python-sdk/.env.test
