@@ -28,7 +28,7 @@ jobs:
             pip install pytest
             pip install ./python-sdk
             pip install -U pip setuptools wheel
-            pip install pytest prettyprinter python-dotenv
+            pip install pytest prettyprinter python-dotenv websockets
       - run:
           name: Run integration tests
           command: |
