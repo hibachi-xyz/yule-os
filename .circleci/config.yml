@@ -32,7 +32,7 @@ jobs:
       - run:
           name: Run integration tests
           command: |
-            pytest tests/
+            pytest python-sdk/
       - slack/notify:
           event: fail
           template: basic_fail_1
