@@ -1,7 +1,13 @@
 version: 2.1
 
+orbs:
+  slack: circleci/slack@5.0
+
 parameters:
   run_integration_tests:
+    type: boolean
+    default: false
+  publish_sdk:
     type: boolean
     default: false
 
@@ -21,13 +27,31 @@ jobs:
           command: |
             pip install pytest
             pip install ./python-sdk
-      - run:
-          name: Install SDK and test dependencies
-          command: |
             pip install -U pip setuptools wheel
             pip install pytest prettyprinter python-dotenv
-            pip install ./python-sdk
-
+      - run:
+          name: Run integration tests
+          command: |
+            pytest tests/
+      - slack/notify:
+          event: fail
+          template: basic_fail_1
+          channel: "circleci-notification"
+          custom: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "plain_text",
+                      "text": "SDK Integration Tests Failed",
+                      "emoji": true
+                    }
+                  ]
+                }
+              ]
+            }
 
   deploy-to-pypi:
     executor: python-executor
