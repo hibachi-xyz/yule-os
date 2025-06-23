@@ -35,8 +35,7 @@ jobs:
             pytest python-sdk/
       - slack/notify:
           event: fail
-          template: basic_fail_1
-          channel: python-sdk-tests
+          channel: C092PBF1820
           custom: |
             {
               "blocks": [
