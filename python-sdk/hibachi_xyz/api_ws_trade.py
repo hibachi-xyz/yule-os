@@ -237,7 +237,7 @@ class HibachiWSTradeClient:
         print_data(response_data)
 
         if response_data["error"]:
-            raise Exception(f"Error modifying order: {response_data["error"]["message"]}")
+            raise Exception(f"Error modifying order: {response_data['error']['message']}")
 
         return response_data
         # return WebSocketResponse(**response_data)
