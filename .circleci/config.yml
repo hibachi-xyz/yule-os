@@ -50,7 +50,7 @@ jobs:
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Pipeline URL:*\n<$CIRCLE_BUILD_URL|View on CircleCI>"
+                      "text": "*Pipeline URL:* <$CIRCLE_BUILD_URL|View on CircleCI>"
                     }
                   ]
                 }
