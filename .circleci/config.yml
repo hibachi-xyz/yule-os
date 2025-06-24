@@ -20,6 +20,7 @@ executors:
 jobs:
   integration-tests:
     executor: python-executor
+    resource_class: large
     steps:
       - checkout
       - run:
