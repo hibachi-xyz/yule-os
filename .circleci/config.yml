@@ -78,7 +78,9 @@ workflows:
   sdk-tests-and-deploy:
     when: << pipeline.parameters.run_integration_tests >>
     jobs:
-      - integration-tests
+      - integration-tests:
+          context:
+            - slack-secrets
       - deploy-to-pypi:
           requires:
             - integration-tests
