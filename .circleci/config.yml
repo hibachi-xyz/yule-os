@@ -20,7 +20,7 @@ executors:
 jobs:
   integration-tests:
     executor: python-executor
-    resource_class: large
+    circleci_ip_ranges: true
     steps:
       - checkout
       - run:
