@@ -29,7 +29,7 @@ jobs:
             pip install pytest
             pip install ./python-sdk
             pip install -U pip setuptools wheel
-            pip install pytest prettyprinter python-dotenv websockets
+            pip install pytest prettyprinter python-dotenv websockets pytest-asyncio
       - run:
           name: Run integration tests
           command: |
