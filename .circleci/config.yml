@@ -47,6 +47,10 @@ jobs:
                       "type": "plain_text",
                       "text": "SDK Integration Tests Failed",
                       "emoji": true
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Pipeline URL:*\n<$CIRCLE_BUILD_URL|View on CircleCI>"
                     }
                   ]
                 }
