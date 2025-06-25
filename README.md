@@ -4,26 +4,57 @@ The official Python SDK for interacting with the Hibachi cryptocurrency exchange
 
 [Official API Docs](https://api-doc.hibachi.xyz/)
 
+# Get Started
 
 ```bash
-pip install hibachi-xyz
+python3 -m venv myapp
+cd myapp
+./bin/pip install hibachi-xyz websockets prettyprinter dotenv
 ```
+
+Create `main.py`
 
 ```python
 from hibachi_xyz import HibachiApiClient
+from dotenv import load_dotenv
+import os
 
-# Initialize the client unauthenticated public data
-client = HibachiApiClient()
+load_dotenv()
 
-# Initialize the client with apikey and account credentials
-client = HibachiApiClient(
-    api_key="your-api-key",
-    account_id="your-account-id",
-    private_key="your-private-key"
+hibachi = HibachiApiClient()
+exchange_info = hibachi.get_exchange_info()
+print(exchange_info)
+```
+
+## Authentication
+
+Create a `.env` file and enter your values from hibachi. Please see https://hibachi-docs.redocly.app/api/authorization for more information.
+
+```
+HIBACHI_API_ENDPOINT="https://api.hibachi.xyz"
+HIBACHI_DATA_API_ENDPOINT="https://data-api.hibachi.xyz"
+HIBACHI_API_KEY="your_api_key_here"
+HIBACHI_PRIVATE_KEY="your_private_key_here"
+HIBACHI_PUBLIC_KEY="your_public_key_here"
+HIBACHI_ACCOUNT_ID="your_account_id_here"
+```
+
+```python
+# ensure .env has the values set.
+hibachi = HibachiApiClient(    
+    api_url= os.environ.get('HIBACHI_API_ENDPOINT'),
+    data_api_url= os.environ.get('HIBACHI_DATA_API_ENDPOINT'),
+    api_key = os.environ.get('HIBACHI_API_KEY'),
+    account_id = os.environ.get('HIBACHI_ACCOUNT_ID'),
+    private_key = os.environ.get('HIBACHI_PRIVATE_KEY'),
 )
 
-print(client.get_exchange_info())
+account_info = hibachi.get_account_info()
+print(f"Account Balance: {account_info.balance}")
+print(f"total Position Notional: {account_info.totalPositionNotional}")
 ```
+
+Once you can see your account balance you can proceed with the below examples or specific documentation. Let us know if you need any help!
 
 # Examples
 
@@ -994,8 +1025,7 @@ Establish WebSocket connection with retry logic
 #### place\_order
 
 ```python
-async def place_order(
-        params: OrderPlaceParams) -> tuple[Nonce, OrderPlaceResponse]
+async def place_order(params: OrderPlaceParams) -> tuple[Nonce, int]
 ```
 
 Place a new order
