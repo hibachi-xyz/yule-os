@@ -358,11 +358,14 @@ def test_place_market_order():
     client.get_order_details(order_id=order_id)
     client.get_order_details(nonce=nonce)
 
+    # Get current price of the market
+    prices = client.get_prices("BTC/USDT-P")   
+
     # Limit orders can be placed similarly to market orders
-    (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, 80_000, Side.BUY, max_fees_percent)
-    (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, 80_000, Side.SELL, max_fees_percent)
-    (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, 80_000, Side.BID, max_fees_percent, creation_deadline=2)
-    (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, 1_001_000, Side.ASK, max_fees_percent, trigger_price=1_000_000)
+    (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, float(prices.markPrice), Side.BUY, max_fees_percent)
+    (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, float(prices.markPrice), Side.SELL, max_fees_percent)
+    (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, float(prices.markPrice), Side.BID, max_fees_percent, creation_deadline=2)
+    (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, float(prices.markPrice), Side.ASK, max_fees_percent, trigger_price=float(prices.markPrice)*1.05)
 
     # Pending or partially filled orders can be updated using the order_id
     # Quantity, price and trigger price can be updated separately or any number of them at once
@@ -372,13 +375,13 @@ def test_place_market_order():
 
     client.update_order(order_id, max_fees_percent, quantity=0.002)
     client.get_order_details(order_id=order_id)
-    client.update_order(order_id, max_fees_percent, price=1_050_000)
+    client.update_order(order_id, max_fees_percent, price=float(prices.markPrice)*1.025)
     client.get_order_details(order_id=order_id)
 
-    client.update_order(order_id, max_fees_percent, trigger_price=1_100_000)
+    client.update_order(order_id, max_fees_percent, trigger_price=float(prices.markPrice)*1.05)
     client.get_order_details(order_id=order_id)
 
-    client.update_order(order_id, max_fees_percent, quantity=0.001, price=1_210_000, trigger_price=1_250_000)
+    client.update_order(order_id, max_fees_percent, quantity=0.001, price=float(prices.markPrice)*1.075, trigger_price=float(prices.markPrice)*1.08)
     client.get_order_details(order_id=order_id)
 
     # Orders can be cancelled one by one
@@ -535,7 +538,7 @@ def test_transfer():
     transfer = client.transfer(
         coin="USDT",
         quantity="5",
-        dstPublicKey="0x26fc22ca2cb2fe0e5a42fa6893753d3249de154779323921ff4764fd6ddb8658c4f4d969bb405d6fe6d84a6a443a975045d3c5f65cbbdec6eb979f95a1444622", 
+        dstPublicKey="0x049c8f81dd7c8001a400a9dd7df7a28ac4a11dd91a6f8ec9ee2c94cf6083116da034f8cd466799f65b11e3416aab95166b8d9e403ec2f268c93cbe150e50500b", 
         max_fees="0")
 
     assert transfer.status == "success"

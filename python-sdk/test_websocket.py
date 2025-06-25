@@ -128,12 +128,12 @@ async def test_trade_websocket():
 
     # all orders cleared again...
 
-    price_before = float(current_price.askPrice) * 1.05
+    price_before = float(current_price.askPrice) * 0.9
     # place an order using websocket
     (nonce, order_id) = await client.place_order(OrderPlaceParams(
         symbol="BTC/USDT-P",
         quantity=0.0001,
-        side=Side.BUY,
+        side=Side.BID,
         maxFeesPercent=0.0005,
         orderType=OrderType.LIMIT,
         price=price_before,
@@ -154,7 +154,7 @@ async def test_trade_websocket():
 
     assert order.result.orderId
     
-    price_after = float(current_price.askPrice) * 1.075
+    price_after = float(current_price.askPrice) * 0.91
 
     # ---- test using rest
     order_details = client.api.get_order_details(order_id=int(order.result.orderId))
@@ -167,17 +167,17 @@ async def test_trade_websocket():
     print("TESTING WITH WEBSOCKET")
 
     # ---- modify using websocket:
-    
+    # todo: ENG-4232/websocket-trade-ordermodify-not-finding-order-to-modify
     modify_result = await client.modify_order(
         order=order.result,
         quantity=0.0001, 
         price=price_after,
         side=order.result.side,
         maxFeesPercent=0.0005,   
-        nonce=nonce
+        nonce=nonce+1
     )
 
-    # assert modify_result.get("status") == 200
+    assert modify_result.get("status") == 200
 
     print("confirm order is in orders status")
     orders_end = await client.get_orders_status()

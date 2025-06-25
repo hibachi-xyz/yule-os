@@ -219,12 +219,15 @@ class HibachiWSTradeClient:
             trigger_price=float(order.triggerPrice) if isinstance(order.triggerPrice, str) else order.triggerPrice,
             nonce=nonce
             )
+        
+        signature = prepare_packet.get("signature")
+        del prepare_packet["signature"]
 
         message = {
             "id": self.message_id,
             "method": "order.modify",
             "params": prepare_packet,
-            "signature": prepare_packet["signature"]
+            "signature": signature
         }
 
         print_data(message)
@@ -236,7 +239,7 @@ class HibachiWSTradeClient:
         print("ws trade modify order -------------------------------------------")
         print_data(response_data)
 
-        if response_data["error"]:
+        if "error" in response_data and response_data["error"]:
             raise Exception(f"Error modifying order: {response_data["error"]["message"]}")
 
         return response_data
