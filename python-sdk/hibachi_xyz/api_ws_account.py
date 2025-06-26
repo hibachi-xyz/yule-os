@@ -57,7 +57,7 @@ class HibachiWSAccountClient:
         self._event_handlers: Dict[str, List[Callable]] = {}
         self._response_handlers: Dict[int, Callable] = {}
         self.api_key = api_key
-        self.account_id = account_id
+        self.account_id = int(account_id) if isinstance(account_id, str) and account_id.isdigit() else account_id
         self.listenKey: str | None = None
 
     async def connect(self):
@@ -96,13 +96,18 @@ class HibachiWSAccountClient:
             # Set a 5-second timeout for receiving messages
             response = await asyncio.wait_for(self.websocket.recv(), timeout=5.0)
             response_data = json.loads(response)
-            if response_data.get("result") is None:
-                # posible response to a ping packet...
-                raise ValueError(f"Unexpected response: {response_data}")
-            result = AccountStreamStartResult(**response_data["result"])
-            result.accountSnapshot = AccountSnapshot(**response_data["result"]["accountSnapshot"])
-            result.accountSnapshot.positions = [Position(**pos) for pos in response_data["result"]["accountSnapshot"]["positions"]]
-            return result
+
+            if response_data.get('event') is not None:
+                print(f"Event received: {response_data['event']}")
+            
+            if response_data.get('result') is not None:
+                result = AccountStreamStartResult(**response_data["result"])
+                result.accountSnapshot = AccountSnapshot(**response_data["result"]["accountSnapshot"])
+                result.accountSnapshot.positions = [Position(**pos) for pos in response_data["result"]["accountSnapshot"]["positions"]]
+                return result
+            
+            print("Received message:", response_data)
+            
         except asyncio.TimeoutError:
             # If timeout occurs, send a ping and then continue listening
             await self.ping()

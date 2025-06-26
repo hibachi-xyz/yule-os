@@ -109,7 +109,7 @@ class HibachiWSTradeClient:
         self._event_handlers: Dict[str, List[Callable]] = {}
         self._response_handlers: Dict[int, Callable] = {}
         self.api_key = api_key
-        self.account_id = account_id
+        self.account_id = int(account_id) if isinstance(account_id, str) else account_id
         self.account_public_key = account_public_key
 
         self.api = HibachiApiClient(api_url=api_url, 
@@ -230,18 +230,15 @@ class HibachiWSTradeClient:
             "signature": signature
         }
 
-        print_data(message)
+        
 
         await self.websocket.send(json.dumps(message))
         response = await self.websocket.recv()
         response_data = json.loads(response)       
 
-        print("ws trade modify order -------------------------------------------")
-        print_data(response_data)
-
         if "error" in response_data and response_data["error"]:
             raise Exception(f"Error modifying order: {response_data["error"]["message"]}")
-
+        
         return response_data
         # return WebSocketResponse(**response_data)
 

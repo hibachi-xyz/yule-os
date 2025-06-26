@@ -61,6 +61,12 @@ class OrderStatus(Enum):
     REJECTED = "REJECTED"
     SCHEDULED_TWAP = "SCHEDULED_TWAP"
     PLACED = "PLACED"
+    PARTIALLY_FILLED = "PARTIALLY_FILLED"
+
+class OrderFlags(Enum):
+    PostOnly = "POST_ONLY"
+    Ioc = "IOC"
+    ReduceOnly = "REDUCE_ONLY"
 
 @dataclass
 class Order:
@@ -71,6 +77,7 @@ class Order:
     finishTime: Optional[int]
     numOrdersRemaining: Optional[int]
     numOrdersTotal: Optional[int]
+    orderFlags: Optional[OrderFlags]
     orderId: str
     orderType: OrderType
     price: Optional[str]
@@ -97,6 +104,7 @@ class Order:
                  totalQuantity: Optional[str] = None,
                  creationTime: Optional[int] = None,
                  contractId: Optional[int] = None,
+                 orderFlags: Optional[str] = None,
                  triggerPrice: Optional[str] = None):
         self.accountId = accountId
         self.availableQuantity = availableQuantity
@@ -114,6 +122,7 @@ class Order:
         self.symbol = symbol
         self.totalQuantity = totalQuantity
         self.triggerPrice = triggerPrice
+        self.orderFlags = OrderFlags(orderFlags) if orderFlags else None
 
 
 
@@ -173,6 +182,7 @@ class FundingRateEstimation:
     estimatedFundingRate: str
     nextFundingTimestamp: int
 
+
 @dataclass
 class PriceResponse:
     askPrice: str
@@ -182,6 +192,23 @@ class PriceResponse:
     spotPrice: str
     symbol: str
     tradePrice: str
+
+
+@dataclass
+class BatchResponseOrder:
+    nonce: Optional[Nonce]
+    orderId: Optional[OrderId]
+
+    def __init__(self, 
+                 nonce: Optional[Nonce] = None, 
+                 orderId: Optional[OrderId] = None):
+        self.nonce = int(nonce) if isinstance(nonce, str) else nonce
+        self.orderId = int(orderId) if isinstance(orderId, str) else orderId
+
+
+@dataclass
+class BatchResponse:
+    orders: List[BatchResponseOrder]
 
 @dataclass
 class StatsResponse:

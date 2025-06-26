@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, TypeAlias, List, Tuple, Union
 from eth_keys import keys
 import requests
 
-from hibachi_xyz.types import ExchangeInfo, FeeConfig, FutureContract, MaintenanceWindow, Order, PendingOrdersResponse, WithdrawalLimit, PriceResponse, FundingRateEstimation, StatsResponse, TradesResponse, Trade, TakerSide, KlinesResponse, Kline, OpenInterestResponse, OrderBookLevel, OrderBook, AccountInfo, Asset, Position, AccountTradesResponse, AccountTrade, SettlementsResponse, Settlement, Order, CapitalBalance, CapitalHistory, Transaction, WithdrawRequest, WithdrawResponse, DepositInfo, Side, InventoryResponse, CrossChainAsset, FeeConfig, Market, TradingTier, MarketInfo, TransferRequest, TransferResponse, TWAPConfig, HibachiApiError, Interval, Nonce, OrderId
+from hibachi_xyz.types import BatchOrder, BatchResponse, BatchResponseOrder, ExchangeInfo, FeeConfig, FutureContract, MaintenanceWindow, Order, PendingOrdersResponse, WithdrawalLimit, PriceResponse, FundingRateEstimation, StatsResponse, TradesResponse, Trade, TakerSide, KlinesResponse, Kline, OpenInterestResponse, OrderBookLevel, OrderBook, AccountInfo, Asset, Position, AccountTradesResponse, AccountTrade, SettlementsResponse, Settlement, Order, CapitalBalance, CapitalHistory, Transaction, WithdrawRequest, WithdrawResponse, DepositInfo, Side, InventoryResponse, CrossChainAsset, FeeConfig, Market, TradingTier, MarketInfo, TransferRequest, TransferResponse, TWAPConfig, HibachiApiError, Interval, Nonce, OrderId
 
 from hibachi_xyz.helpers import print_data, default_api_url, default_data_api_url
 
@@ -27,6 +27,12 @@ class CreateOrder:
     creation_deadline: Optional[float]
 
     def __init__(self, symbol: str, side: Side, quantity: float, max_fees_percent: float, price: Optional[float] = None, trigger_price: Optional[float] = None, twap_config: Optional[TWAPConfig] = None, creation_deadline: Optional[float] = None):
+
+        if side == Side.BUY:
+            side = Side.BID
+        elif side == Side.SELL:
+            side = Side.ASK
+
         self.symbol = symbol
         self.side = side
         self.quantity = quantity
@@ -49,6 +55,12 @@ class UpdateOrder:
     trigger_price: Optional[float]
 
     def __init__(self, order_id: int, symbol: str, side: Side, quantity: float, max_fees_percent: float, price: Optional[float] = None, trigger_price: Optional[float] = None, creation_deadline: Optional[float] = None):
+
+        if side == Side.BUY:
+            side = Side.BID
+        elif side == Side.SELL:
+            side = Side.ASK
+
         self.order_id = order_id
         self.symbol = symbol
         self.side = side
@@ -127,7 +139,7 @@ class HibachiApiClient:
             ):
         self.api_url = api_url
         self.data_api_url = data_api_url
-        self.account_id = account_id
+        self.account_id = int(account_id) if isinstance(account_id, str) and account_id.isdigit() else account_id
         self.api_key = api_key
         if private_key is not None:
             self.set_private_key(private_key)
@@ -442,8 +454,6 @@ class HibachiApiClient:
         self.__check_auth_data()
         response = self.__send_authorized_request('GET', f"/capital/history?accountId={self.account_id}")
 
-        print_data(response)
-
         return CapitalHistory(
             transactions=[Transaction(**tx) for tx in response['transactions']]
         )
@@ -525,7 +535,6 @@ class HibachiApiClient:
         ``` 
         -----------------------------------------------------------------------
         """
-        print(f"getting deposit info for accountId: {self.account_id} public key: {public_key}")
         response = self.__send_authorized_request('GET', f"/capital/deposit-info?accountId={self.account_id}&publicKey={public_key}")
         return DepositInfo(**response)
 
@@ -826,6 +835,7 @@ class HibachiApiClient:
         response['price'] = response.get('price')
         response['triggerPrice'] = response.get('triggerPrice')       
         response['finishTime'] = response.get('finishTime')
+        response['orderFlags'] = response.get('orderFlags')
         
         return Order(**response)
 
@@ -1003,7 +1013,6 @@ class HibachiApiClient:
         if workaround:
             orders = self.get_pending_orders().orders
             for order in orders:
-                print(f"deleting order: {order.orderId}")
                 self.cancel_order(order_id=int(order.orderId))
             return
         else:            
@@ -1013,7 +1022,7 @@ class HibachiApiClient:
             request_data["accountId"] = int(self.account_id)
             return self.__send_authorized_request('DELETE', f"/trade/orders", json=request_data)
 
-    def batch_orders(self, orders: list[CreateOrder | UpdateOrder | CancelOrder]) -> Dict[str, Any]:
+    def batch_orders(self, orders: list[CreateOrder | UpdateOrder | CancelOrder]) -> BatchResponse:
         """
         Creating, updating and cancelling orders can be done in a batch
         This requires knowing all details of the existing orders, there is no shortcut for update order details
@@ -1065,7 +1074,11 @@ class HibachiApiClient:
             "accountId": int(self.account_id),
             "orders": orders_data
         }
-        return self.__send_authorized_request('POST', f"/trade/orders", json=request_data)
+
+        result = self.__send_authorized_request('POST', f"/trade/orders", json=request_data)
+        orders = [BatchResponseOrder(**order) for order in result['orders']]
+        result['orders'] = orders
+        return BatchResponse(**result)
 
     """ Private helpers """
 
@@ -1090,17 +1103,10 @@ class HibachiApiClient:
             "Accept": "application/json"
         }      
 
-        # url = f"{method} {self.api_url}{path}"
-        # print(url)
-        # print(headers)
-        # print(json)
-
         response = requests.request(method, f"{self.api_url}{path}", headers=headers, json=json)
         error = _get_http_error(response)
         if error is not None:
             raise error
-        
-        # print(response.text)
 
         return response.json()
 
