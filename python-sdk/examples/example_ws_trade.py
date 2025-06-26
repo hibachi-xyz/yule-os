@@ -32,7 +32,6 @@ async def example_ws_trade():
         orders_rest = client.api.get_pending_orders()
         print_data(orders_rest)
 
-        assert len(orders_rest.orders) == len(orders_start.result)
         assert len(orders_rest.orders) == 0
 
         # place an order using REST

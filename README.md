@@ -28,7 +28,7 @@ print(exchange_info)
 
 ## Authentication
 
-Create a `.env` file and enter your values from hibachi. Please see https://hibachi-docs.redocly.app/api/authorization for more information. Before start running this SDK, you want to make 10USDT deposit into the account you will be using below to ensure successful runs. 
+Create a `.env` file and enter your values from hibachi. Please see https://hibachi-docs.redocly.app/api/authorization for more information. Before start running this SDK, you want to make 10 USDT deposit into the account you will be using below to ensure successful runs. 
 
 ```
 ENVIRONMENT=production
