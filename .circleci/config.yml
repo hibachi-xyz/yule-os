@@ -71,7 +71,10 @@ jobs:
     steps:
       - checkout
       - when:
-          condition: << pipeline.parameters.publish_sdk && pipeline.parameters.environment == "production" >>
+          condition: 
+            and: 
+              - << pipeline.parameters.publish_sdk >>
+              - << pipeline.parameters.environment == "production" >>
           steps:
             - run:
                 name: Patch version dynamically
