@@ -1,24 +1,33 @@
-from dataclasses import asdict, dataclass
+import asyncio
 import json
 import os
 import time
-import asyncio
-from prettyprinter import pformat
-import websockets
+from dataclasses import asdict, dataclass
 from typing import List, Union
 
-from hibachi_xyz import get_version, HibachiApiClient, HibachiApiError, Interval, TWAPConfig, TWAPQuantityMode, CreateOrder, UpdateOrder, CancelOrder
-from hibachi_xyz.types import FundingRateEstimation, Order, Side, OrderStatus, OrderType, PriceResponse, StatsResponse, TradesResponse, Trade, TakerSide
-from hibachi_xyz.helpers import format_maintenance_window, get_next_maintenance_window, get_withdrawal_fee_for_amount, print_data
-from hibachi_xyz.types import ExchangeInfo, FeeConfig, FutureContract, MaintenanceWindow, WithdrawalLimit, KlinesResponse, Kline, OpenInterestResponse, OrderBook, OrderBookLevel, AccountInfo, Asset, Position, AccountTradesResponse, AccountTrade, SettlementsResponse, Settlement, PendingOrdersResponse, Order, CapitalHistory, Transaction, WithdrawResponse, DepositInfo, CapitalBalance, InventoryResponse, CrossChainAsset, Market, TradingTier
-
+import websockets
 from eth_keys import keys
-
-
-from dotenv import load_dotenv
-
-load_dotenv()
-
+from hibachi_xyz import (CancelOrder, CreateOrder, HibachiApiClient,
+                         HibachiApiError, Interval, TWAPConfig,
+                         TWAPQuantityMode, UpdateOrder, get_version)
+from hibachi_xyz.env_setup import setup_environment
+from hibachi_xyz.helpers import (format_maintenance_window,
+                                 get_next_maintenance_window,
+                                 get_withdrawal_fee_for_amount, print_data)
+from hibachi_xyz.types import (AccountInfo, AccountTrade,
+                               AccountTradesResponse, Asset, CapitalBalance,
+                               CapitalHistory, CrossChainAsset, DepositInfo,
+                               ExchangeInfo, FeeConfig, FundingRateEstimation,
+                               FutureContract, InventoryResponse, Kline,
+                               KlinesResponse, MaintenanceWindow, Market,
+                               OpenInterestResponse, Order, OrderBook,
+                               OrderBookLevel, OrderStatus, OrderType,
+                               PendingOrdersResponse, Position, PriceResponse,
+                               Settlement, SettlementsResponse, Side,
+                               StatsResponse, TakerSide, Trade, TradesResponse,
+                               TradingTier, Transaction, WithdrawalLimit,
+                               WithdrawResponse)
+from prettyprinter import pformat
 
 
 def is_convertible_to_float(value: str) -> bool:
@@ -28,12 +37,8 @@ def is_convertible_to_float(value: str) -> bool:
     except ValueError:
         return False
 
-api_endpoint = os.environ.get('HIBACHI_API_ENDPOINT', "https://api.hibachi.xyz")
-data_api_endpoint = os.environ.get('HIBACHI_DATA_API_ENDPOINT', "https://data-api.hibachi.xyz")
-api_key = os.environ.get('HIBACHI_API_KEY', "your-api-key")
-account_id = int(os.environ.get('HIBACHI_ACCOUNT_ID', "your-account-id"))
-private_key = os.environ.get('HIBACHI_PRIVATE_KEY', "your-private")
-public_key = os.environ.get('HIBACHI_PUBLIC_KEY', "your-public")
+api_endpoint, data_api_endpoint, api_key, account_id, private_key, public_key, dst_public_key = setup_environment()
+
 
 def test_get_version():
     ver = get_version()    
@@ -410,7 +415,7 @@ def test_batch_order():
     check = False
     for position in account_info.positions:
         print(f"Position: \t{position.symbol} \t{position.quantity}")
-        if position.symbol == "BTC/USDT-P" and float(position.quantity) > 0.02:
+        if position.symbol == "BTC/USDT-P" and float(position.quantity) > 0:
             check = True
 
     assert check, "Not enough BTC/USDT-P position to sell"    
@@ -576,8 +581,8 @@ def test_transfer():
 
     transfer = client.transfer(
         coin="USDT",
-        quantity="5",
-        dstPublicKey="0x049c8f81dd7c8001a400a9dd7df7a28ac4a11dd91a6f8ec9ee2c94cf6083116da034f8cd466799f65b11e3416aab95166b8d9e403ec2f268c93cbe150e50500b", 
+        quantity="0.5",
+        dstPublicKey=dst_public_key, 
         max_fees="0")
 
     assert transfer.status == "success"

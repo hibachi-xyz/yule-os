@@ -31,23 +31,26 @@ print(exchange_info)
 Create a `.env` file and enter your values from hibachi. Please see https://hibachi-docs.redocly.app/api/authorization for more information.
 
 ```
-HIBACHI_API_ENDPOINT="https://api.hibachi.xyz"
-HIBACHI_DATA_API_ENDPOINT="https://data-api.hibachi.xyz"
-HIBACHI_API_KEY="your_api_key_here"
-HIBACHI_PRIVATE_KEY="your_private_key_here"
-HIBACHI_PUBLIC_KEY="your_public_key_here"
-HIBACHI_ACCOUNT_ID="your_account_id_here"
+HIBACHI_API_ENDPOINT_PRODUCTION="https://api.hibachi.xyz"
+HIBACHI_DATA_API_ENDPOINT_PRODUCTION="https://data-api.hibachi.xyz"
+HIBACHI_API_KEY_PRODUCTION="your_api_key_here"
+HIBACHI_PRIVATE_KEY_PRODUCTION="your_private_key_here"
+HIBACHI_PUBLIC_KEY_PRODUCTION="your_public_key_here"
+HIBACHI_ACCOUNT_ID_PRODUCTION="your_account_id_here"
 ```
 
 ```python
 # ensure .env has the values set.
-hibachi = HibachiApiClient(    
-    api_url= os.environ.get('HIBACHI_API_ENDPOINT'),
-    data_api_url= os.environ.get('HIBACHI_DATA_API_ENDPOINT'),
-    api_key = os.environ.get('HIBACHI_API_KEY'),
-    account_id = os.environ.get('HIBACHI_ACCOUNT_ID'),
-    private_key = os.environ.get('HIBACHI_PRIVATE_KEY'),
-)
+from hibachi_xyz.env_setup import setup_environment
+api_endpoint, data_api_endpoint, api_key, account_id, private_key, public_key, _ = setup_environment()
+
+hibachi = HibachiApiClient(
+        api_url= api_endpoint,
+        data_api_url= data_api_endpoint,
+        api_key = api_key,
+        account_id = account_id,
+        private_key = private_key,
+    )
 
 account_info = hibachi.get_account_info()
 print(f"Account Balance: {account_info.balance}")
@@ -81,15 +84,15 @@ The SDK supports the following environment variables. You can create a `.env` fi
 
 ```sh
 # Default API endpoint
-HIBACHI_API_ENDPOINT="https://api.hibachi.xyz"
+HIBACHI_API_ENDPOINT_PRODUCTION="https://api.hibachi.xyz"
 # Default data API endpoint
-HIBACHI_DATA_API_ENDPOINT="https://data-api.hibachi.xyz"
+HIBACHI_DATA_API_ENDPOINT_PRODUCTION="https://data-api.hibachi.xyz"
 # Your API key
-HIBACHI_API_KEY=""
+HIBACHI_API_KEY_PRODUCTION=""
 # Your account ID
-HIBACHI_ACCOUNT_ID=""
+HIBACHI_ACCOUNT_ID_PRODUCTION=""
 # Your private key
-HIBACHI_PRIVATE_KEY=""
+HIBACHI_PRIVATE_KEY_PRODUCTION=""
 ```
 
 # API Reference
