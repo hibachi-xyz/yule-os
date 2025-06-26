@@ -31,12 +31,14 @@ print(exchange_info)
 Create a `.env` file and enter your values from hibachi. Please see https://hibachi-docs.redocly.app/api/authorization for more information.
 
 ```
+ENVIRONMENT="production"
 HIBACHI_API_ENDPOINT_PRODUCTION="https://api.hibachi.xyz"
 HIBACHI_DATA_API_ENDPOINT_PRODUCTION="https://data-api.hibachi.xyz"
 HIBACHI_API_KEY_PRODUCTION="your_api_key_here"
 HIBACHI_PRIVATE_KEY_PRODUCTION="your_private_key_here"
 HIBACHI_PUBLIC_KEY_PRODUCTION="your_public_key_here"
 HIBACHI_ACCOUNT_ID_PRODUCTION="your_account_id_here"
+HIBACHI_TRANSFER_DST_ACCOUNT_PUBLIC_KEY_PRODUCTION="transfer_destination_account_public_key_here"
 ```
 
 ```python
