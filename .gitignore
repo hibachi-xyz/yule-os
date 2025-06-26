@@ -1,5 +1,5 @@
-/build
-/*.egg-info
+**/build
+**/*.egg-info
 __pycache__
 /bin
 /lib
