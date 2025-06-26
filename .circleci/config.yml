@@ -66,25 +66,42 @@ jobs:
               ]
             }
 
+  
   deploy-to-pypi:
     executor: python-executor
     steps:
       - checkout
-      - run:
-          name: Patch version dynamically
-          command: |
-            VERSION_SUFFIX=$(date +%Y%m%d%H%M%S)
-            sed -i "s/^version = .*/version = \"0.0.1.dev$VERSION_SUFFIX\"/" python-sdk/pyproject.toml
-            grep version python-sdk/pyproject.toml
-      - run: pip install build twine
-      - run:
-          name: Build SDK
-          command: |
-            python -m build -s -w python-sdk
-      - run:
-          name: Publish to PyPI
-          command: |
-            twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
+      - when:
+          condition: << parameters.preinstall-foo >>
+          steps:
+            - run: echo "preinstall"
+      - unless:
+          condition: << parameters.preinstall-foo >>
+          steps:
+            - run: echo "don't preinstall"
+
+  deploy-to-pypi1:
+    executor: python-executor
+    steps:
+      - checkout
+      - when:
+          condition: << pipeline.parameters.publish_sdk && pipeline.parameters.environment == "production" >>
+          steps:
+            - run:
+                name: Patch version dynamically
+                command: |
+                  VERSION_SUFFIX=$(date +%Y%m%d%H%M%S)
+                  sed -i "s/^version = .*/version = \"0.0.1.dev$VERSION_SUFFIX\"/" python-sdk/pyproject.toml
+                  grep version python-sdk/pyproject.toml
+            - run: pip install build twine
+            - run:
+                name: Build SDK
+                command: |
+                  python -m build -s -w python-sdk
+            - run:
+                name: Publish to PyPI
+                command: |
+                  twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
 
 
 workflows:
@@ -95,10 +112,6 @@ workflows:
           context:
             - slack-secrets
       - deploy-to-pypi:
-          when:
-            and: 
-              - << pipeline.parameters.publish_sdk >>
-              - equal: [ "production", << pipeline.parameters.environment >> ]
           requires:
             - integration-tests
           filters:
