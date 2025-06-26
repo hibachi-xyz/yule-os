@@ -10,7 +10,6 @@ from typing import List, Union
 from hibachi_xyz import get_version, HibachiApiClient, HibachiApiError, Interval, TWAPConfig, TWAPQuantityMode, CreateOrder, UpdateOrder, CancelOrder
 from hibachi_xyz.types import FundingRateEstimation, Order, Side, OrderStatus, OrderType, PriceResponse, StatsResponse, TradesResponse, Trade, TakerSide
 from hibachi_xyz.helpers import format_maintenance_window, get_next_maintenance_window, get_withdrawal_fee_for_amount, print_data
-
 from hibachi_xyz.types import ExchangeInfo, FeeConfig, FutureContract, MaintenanceWindow, WithdrawalLimit, KlinesResponse, Kline, OpenInterestResponse, OrderBook, OrderBookLevel, AccountInfo, Asset, Position, AccountTradesResponse, AccountTrade, SettlementsResponse, Settlement, PendingOrdersResponse, Order, CapitalHistory, Transaction, WithdrawResponse, DepositInfo, CapitalBalance, InventoryResponse, CrossChainAsset, Market, TradingTier
 
 from eth_keys import keys
@@ -78,8 +77,7 @@ def test_exchange_info():
 def test_get_prices():
     client = HibachiApiClient(api_endpoint, data_api_endpoint)
     assert client != None
-    prices = client.get_prices("BTC/USDT-P")    
-    # print_data(client.get_prices("BTC/USDT-P"))
+    prices = client.get_prices("BTC/USDT-P")
 
     assert isinstance(prices.askPrice, str)
     assert isinstance(prices.bidPrice, str)
@@ -389,9 +387,59 @@ def test_place_market_order():
     # Or all at once
     client.cancel_all_orders()
 
-    (nonce, limit_order_id) = client.place_limit_order("BTC/USDT-P", 0.001, 6_000, Side.BID, max_fees_percent)
-    (nonce, trigger_limit_order_id) = client.place_limit_order("BTC/USDT-P", 0.001, 90_000, Side.ASK, max_fees_percent, trigger_price=90_100)
-    (nonce, trigger_market_order_id) = client.place_market_order("BTC/USDT-P", 0.001, Side.ASK, max_fees_percent, trigger_price=90_100)
+def test_batch_order():
+    client = HibachiApiClient(api_endpoint, data_api_endpoint, account_id=account_id, api_key=api_key, private_key=private_key)
+
+    exch_info = client.get_exchange_info()
+    prices = client.get_prices("BTC/USDT-P")   
+
+    max_fees_percent = float(exch_info.feeConfig.tradeTakerFeeRate)*2.0    
+
+    # Or all at once
+    client.cancel_all_orders()
+
+    # buy some to sell
+    (nonce, limit_order_id) = client.place_market_order("BTC/USDT-P", quantity=0.005, side=Side.BUY, max_fees_percent=max_fees_percent)
+  
+
+    print(f"Limit order ID: {limit_order_id}, Nonce: {nonce}")
+
+    # ensure we have some BTC/USDT-P position to sell
+    account_info = client.get_account_info()
+
+    check = False
+    for position in account_info.positions:
+        print(f"Position: \t{position.symbol} \t{position.quantity}")
+        if position.symbol == "BTC/USDT-P" and float(position.quantity) > 0.02:
+            check = True
+
+    assert check, "Not enough BTC/USDT-P position to sell"    
+    
+    # place some test orders to update and cancel in batch
+    (nonce, limit_order_id) = client.place_limit_order(symbol="BTC/USDT-P", 
+        quantity=0.001, 
+        price=float(prices.bidPrice) * 0.975, 
+        side=Side.BID, 
+        max_fees_percent=max_fees_percent
+        )
+    
+    (nonce, trigger_limit_order_id) = client.place_limit_order(
+        symbol="BTC/USDT-P", 
+        quantity=0.001, 
+        price=float(prices.askPrice) * 1.05,
+        side=Side.ASK, 
+        max_fees_percent=max_fees_percent, 
+        trigger_price=float(prices.askPrice) * 1.025,
+        )
+    
+    (nonce, trigger_market_order_id) = client.place_market_order(
+        symbol="BTC/USDT-P", 
+        quantity=0.001, 
+        side=Side.ASK, 
+        max_fees_percent=max_fees_percent, 
+        trigger_price=float(prices.askPrice) * 1.025,
+        )
+
 
     # Creating, updating and cancelling orders can be done in a batch
     # This requires knowing all details of the existing orders, there is no shortcut for update order details
@@ -399,62 +447,54 @@ def test_place_market_order():
         # Simple market order
         CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent),
         # Simple limit order
-        CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent, price=90_000),
+        CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent, price=float(prices.spotPrice)),
         # Trigger market order
-        CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent, trigger_price=85_000),
+        CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent, trigger_price=float(prices.spotPrice)),
         # Trigger limit order
-        CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent, price=84_750, trigger_price=85_000),
+        CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent, price=float(prices.askPrice), trigger_price=float(prices.askPrice) * 1.05),
         # TWAP order
         CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent, twap_config=TWAPConfig(5, TWAPQuantityMode.FIXED)),
         # Market order, only valid if placed within two seconds
         CreateOrder("BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, creation_deadline=2),
         # Limit order, only valid if placed within one seconds
-        CreateOrder("BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, price=90_000, creation_deadline=1),
+        CreateOrder("BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, price=float(prices.spotPrice), creation_deadline=1),
         # Trigger market order, only valid if placed within three seconds
-        CreateOrder("BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, trigger_price=85_000, creation_deadline=3),
+        CreateOrder("BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, trigger_price=float(prices.askPrice), creation_deadline=3),
         # Trigger limit order, only valid if placed within five seconds
-        CreateOrder("BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, price=75_250, trigger_price=75_000, creation_deadline=5),
+        CreateOrder("BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, price=float(prices.askPrice), trigger_price=float(prices.askPrice), creation_deadline=5),
         # TWAP order only valid if placed within two seconds
-        CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent, twap_config=TWAPConfig(5, TWAPQuantityMode.FIXED), creation_deadline=2),
+        CreateOrder("BTC/USDT-P", Side.SELL, 0.001, max_fees_percent, twap_config=TWAPConfig(5, TWAPQuantityMode.FIXED)),
         # Update limit order
         # Need to fill all relevant optional parameters
-        UpdateOrder(limit_order_id, "BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, price=60_000),
+        UpdateOrder(limit_order_id, "BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, price=float(prices.askPrice)),
         # update trigger limit order
         # Need to fill all relevant optional parameters
-        UpdateOrder(trigger_limit_order_id, "BTC/USDT-P", Side.ASK, 0.002, max_fees_percent, price=94_000, trigger_price=94_500),
+        UpdateOrder(trigger_limit_order_id, "BTC/USDT-P", Side.ASK, 0.002, max_fees_percent, price=float(prices.askPrice), trigger_price=float(prices.askPrice)),
         # update trigger market order
         # Need to fill all relevant optional parameters
-        UpdateOrder(trigger_market_order_id, "BTC/USDT-P", Side.ASK, 0.001, max_fees_percent, trigger_price=93_000),
+        UpdateOrder(trigger_market_order_id, "BTC/USDT-P", Side.ASK, 0.001, max_fees_percent, trigger_price=float(prices.askPrice)),
         # Cancel order
         CancelOrder(order_id=limit_order_id),
         CancelOrder(nonce=nonce),
     ])
 
+    # assert all batch orders were successful
+    for order in response.orders:
+        both_None = order.nonce is None and order.orderId is None
+        assert not both_None, "Order nonce and ID cannot be both None"        
+
+    # ensure all orders are cancelled
     client.cancel_all_orders()
 
 def test_get_capital_balance():
     client = HibachiApiClient(api_endpoint, data_api_endpoint, account_id=account_id, api_key=api_key)
-    assert client != None
-    assert account_id != "your-account-id"
-    assert api_key != "your-api-key"
-    # client.set_account_id(account_id)
-    # client.set_api_key(api_key)
-
     capitalresult = client.get_capital_balance()
-    print_data(capitalresult)
     assert isinstance(capitalresult, CapitalBalance)
     assert isinstance(capitalresult.balance, str)
 
 def test_get_capital_history():
     client = HibachiApiClient(api_endpoint, data_api_endpoint, account_id=account_id, api_key=api_key)
-    assert client != None
-    assert account_id != "your-account-id"
-    assert api_key != "your-api-key"
-    # client.set_account_id(account_id)
-    # client.set_api_key(api_key)
-
-    history = client.get_capital_history()
-    
+    history = client.get_capital_history()   
     assert isinstance(history, CapitalHistory)
     assert isinstance(history.transactions, list)
     
@@ -498,9 +538,8 @@ def test_get_deposit_info():
     # GET api.hibachi.xyz/user/subaccounts
     # or 
     # GET api-test.hibachi.xyz/capital/deposit-info
-
-    deposit_info = client.get_deposit_info(public_key)    
-    print_data(deposit_info)
+    deposit_info = client.get_deposit_info(public_key)
+    
     assert isinstance(deposit_info, DepositInfo)
     assert isinstance(deposit_info.depositAddressEvm, str)
     assert deposit_info.depositAddressEvm.startswith("0x")
@@ -511,7 +550,7 @@ def test_get_inventory():
     assert client != None
 
     inventory = client.get_inventory()
-    print_data(inventory)
+    
 
     assert isinstance(inventory, InventoryResponse)    
     assert isinstance(inventory.crossChainAssets, list)
@@ -548,8 +587,7 @@ def test_cancel_order():
     assert client != None
     start_order_count = len(client.get_pending_orders().orders)
 
-    current_price = client.get_prices("BTC/USDT-P")
-    print(f"current_price: {current_price}")
+    current_price = client.get_prices("BTC/USDT-P")    
 
     (nonce, order_id) = client.place_limit_order(
         symbol="BTC/USDT-P", 
@@ -584,12 +622,8 @@ def test_cancel_order():
     cancel_result = client.cancel_order(nonce=nonce)
     assert len(client.get_pending_orders().orders) == start_order_count
 
-    print(f"orders count: {len(client.get_pending_orders().orders)}")
-
     for order in client.get_pending_orders().orders:
-        print(f"order: {order}")
         # delete order
-        print(f"deleting order: {order.orderId}")
         client.cancel_order(order_id=int(order.orderId)) 
 
 def test_cancel_all_orders():
@@ -597,7 +631,7 @@ def test_cancel_all_orders():
     assert client != None
 
     current_price = client.get_prices("BTC/USDT-P")
-    print(f"current_price: {current_price}")
+    
 
     start_order_count = len(client.get_pending_orders().orders)
 
@@ -616,13 +650,13 @@ def test_cancel_all_orders():
 
     assert after_adding_order_count == start_order_count + 1
 
-    print(f"after_adding_order_count: {after_adding_order_count}")
+    
 
     cancel_result = client.cancel_all_orders()
-    print_data(cancel_result)
+    
 
     order_count_after_cancel_all = len(client.get_pending_orders().orders)
 
-    print(f"order_count_after_cancel_all: {order_count_after_cancel_all}")
+    
 
     assert order_count_after_cancel_all == 0

@@ -191,7 +191,10 @@ async def test_trade_websocket():
 @pytest.mark.asyncio
 async def test_account_websocket():
     client = HibachiWSAccountClient(
-        api_endpoint=api_endpoint.replace("https://", "wss://"), api_key=api_key, account_id=account_id)
+        api_endpoint=api_endpoint.replace("https://", "wss://"), 
+        api_key=api_key, 
+        account_id=account_id
+    )
     await client.connect()
     result_start = await client.stream_start()
     assert isinstance(result_start.listenKey,str)
