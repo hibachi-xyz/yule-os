@@ -10,6 +10,10 @@ parameters:
   publish_sdk:
     type: boolean
     default: false
+  environment:
+    default: "test"
+    type: enum
+    enum: [ "test","staging","production" ]
 
 executors:
   python-executor:
@@ -31,9 +35,14 @@ jobs:
             pip install -U pip setuptools wheel
             pip install pytest prettyprinter python-dotenv websockets pytest-asyncio
       - run:
+          name: Dynamiic set enviornment 
+          command: |
+            echo ${CIRCLE_PIPELINE_PARAMETERS_ENVIRONMENT}
+            echo "export ENVIRONMENT=${CIRCLE_PIPELINE_PARAMETERS_ENVIRONMENT}" >> $BASH_ENV
+      - run:
           name: Run integration tests
           command: |
-            pytest python-sdk/
+            ENVIRONMENT=$ENVIRONMENT pytest python-sdk/
       - slack/notify:
           event: fail
           channel: python-sdk-tests
@@ -86,5 +95,14 @@ workflows:
           context:
             - slack-secrets
       - deploy-to-pypi:
+          when:
+            and: 
+              - << pipeline.parameters.publish_sdk >>
+              - equal: [ "production", << pipeline.parameters.environment >> ]
           requires:
             - integration-tests
+          filters:
+            branches:
+              only:
+                - release
+  
