@@ -66,21 +66,7 @@ jobs:
               ]
             }
 
-  
   deploy-to-pypi:
-    executor: python-executor
-    steps:
-      - checkout
-      - when:
-          condition: << parameters.preinstall-foo >>
-          steps:
-            - run: echo "preinstall"
-      - unless:
-          condition: << parameters.preinstall-foo >>
-          steps:
-            - run: echo "don't preinstall"
-
-  deploy-to-pypi1:
     executor: python-executor
     steps:
       - checkout
@@ -119,5 +105,5 @@ workflows:
               only:
                 - release
 
-                
+
   
