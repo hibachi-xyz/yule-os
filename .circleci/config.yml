@@ -28,20 +28,14 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Install SDK and dependencies
+          name: Install SDK and dependencies and Run PyTest
           command: |
             python3 -m venv myapp
             source myapp/bin/activate 
             pip install --upgrade pip
             pip install 'hibachi-xyz[dev]'
-      - run:
-          name: Dynamiic set enviornment 
-          command: |
             echo ${CIRCLE_PIPELINE_PARAMETERS_ENVIRONMENT}
             echo "export ENVIRONMENT=${CIRCLE_PIPELINE_PARAMETERS_ENVIRONMENT}" >> $BASH_ENV
-      - run:
-          name: Run integration tests
-          command: |
             ENVIRONMENT=$ENVIRONMENT pytest python-sdk/
       - slack/notify:
           event: fail
