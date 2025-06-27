@@ -18,11 +18,11 @@ parameters:
 executors:
   python-executor:
     docker:
-      - image: cimg/python:3.11
-    working_directory: ~/repo
+      - image: cimg/python:3.13
 
 jobs:
   integration-tests:
+    working_directory: /home/circleci/project/
     executor: python-executor
     circleci_ip_ranges: true
     steps:
@@ -30,10 +30,11 @@ jobs:
       - run:
           name: Install SDK and dependencies
           command: |
-            pip install pytest
+            python3 -m venv myapp
+            source myapp/bin/activate 
+            pip install pytest prettyprinter python-dotenv websockets pytest-asyncio hibachi-xyz
             pip install ./python-sdk
             pip install -U pip setuptools wheel
-            pip install pytest prettyprinter python-dotenv websockets pytest-asyncio
       - run:
           name: Dynamiic set enviornment 
           command: |
