@@ -32,9 +32,8 @@ jobs:
           command: |
             python3 -m venv myapp
             source myapp/bin/activate 
-            pip install pytest prettyprinter python-dotenv websockets pytest-asyncio hibachi-xyz
-            pip install ./python-sdk
-            pip install -U pip setuptools wheel
+            pip install --upgrade pip
+            pip install 'hibachi-xyz[dev]'
       - run:
           name: Dynamiic set enviornment 
           command: |
@@ -91,7 +90,8 @@ jobs:
             - run:
                 name: Publish to PyPI
                 command: |
-                  twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
+                  # twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
+                  echo 'dry run publish'
 
 
 workflows:
