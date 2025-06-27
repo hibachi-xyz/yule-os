@@ -4,19 +4,28 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hibachi_xyz"
-version = "0.1.3"
+version = "0.1.6"
 authors = [
-  { name = "Hibachi Engineer" },
+ { name = "Hibachi Engineer" }
 ]
 description = "Hibachi SDK for accessing the API"
-# Corrected path to README.md
-readme = "README.md"  # Adjust this if pyproject.toml is in a subfolder, otherwise use "README.md"
+readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"  # Replaced deprecated license classifiers with SPDX license expression
+license = "MIT" 
 dependencies = [
   "eth_keys == 0.6.1",
   "requests == 2.32.3",
-  "toml == 0.10.2"
+  "toml == 0.10.2",
+  "websockets >= 11.0.3",
+  "python-dotenv >= 1.0.0",
+  "prettyprinter >= 0.18.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "pytest-timeout"
 ]
 
 [project.urls]
