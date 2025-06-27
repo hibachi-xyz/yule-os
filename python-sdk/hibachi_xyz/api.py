@@ -1,18 +1,32 @@
+import hmac
+import json
 from dataclasses import asdict
 from enum import Enum
 from hashlib import sha256
-import hmac
-import json
 from math import floor
 from time import time, time_ns
-from typing import Any, Dict, Optional, TypeAlias, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeAlias, Union
 
-from eth_keys import keys
 import requests
-
-from hibachi_xyz.types import BatchOrder, BatchResponse, BatchResponseOrder, ExchangeInfo, FeeConfig, FutureContract, MaintenanceWindow, Order, PendingOrdersResponse, WithdrawalLimit, PriceResponse, FundingRateEstimation, StatsResponse, TradesResponse, Trade, TakerSide, KlinesResponse, Kline, OpenInterestResponse, OrderBookLevel, OrderBook, AccountInfo, Asset, Position, AccountTradesResponse, AccountTrade, SettlementsResponse, Settlement, Order, CapitalBalance, CapitalHistory, Transaction, WithdrawRequest, WithdrawResponse, DepositInfo, Side, InventoryResponse, CrossChainAsset, FeeConfig, Market, TradingTier, MarketInfo, TransferRequest, TransferResponse, TWAPConfig, HibachiApiError, Interval, Nonce, OrderId
-
-from hibachi_xyz.helpers import print_data, default_api_url, default_data_api_url
+from eth_keys import keys
+from hibachi_xyz.helpers import (default_api_url, default_data_api_url,
+                                 print_data)
+from hibachi_xyz.types import (AccountInfo, AccountTrade,
+                               AccountTradesResponse, Asset, BatchOrder,
+                               BatchResponse, BatchResponseOrder,
+                               CapitalBalance, CapitalHistory, CrossChainAsset,
+                               DepositInfo, ExchangeInfo, FeeConfig,
+                               FundingRateEstimation, FutureContract,
+                               HibachiApiError, Interval, InventoryResponse,
+                               Kline, KlinesResponse, MaintenanceWindow,
+                               Market, MarketInfo, Nonce, OpenInterestResponse,
+                               Order, OrderBook, OrderBookLevel, OrderId,
+                               PendingOrdersResponse, Position, PriceResponse,
+                               Settlement, SettlementsResponse, Side,
+                               StatsResponse, TakerSide, Trade, TradesResponse,
+                               TradingTier, Transaction, TransferRequest,
+                               TransferResponse, TWAPConfig, WithdrawalLimit,
+                               WithdrawRequest, WithdrawResponse)
 
 
 class CreateOrder:
@@ -506,7 +520,7 @@ class HibachiApiClient:
         nonce = time_ns() // 1_000
 
         request = TransferRequest(
-             accountId=self.account_id,
+            accountId=self.account_id,
             coin=coin,
             nonce=nonce,
             dstPublicKey=dstPublicKey.replace('0x', ''),
@@ -1076,7 +1090,13 @@ class HibachiApiClient:
         }
 
         result = self.__send_authorized_request('POST', f"/trade/orders", json=request_data)
-        orders = [BatchResponseOrder(**order) for order in result['orders']]
+        # Assuming result['orders'] contains a list of dictionaries with keys that may include 'errorCode'
+        orders = [
+            # Filter out 'errorCode' if it exists in the order dictionary
+            BatchResponseOrder(**{key: value for key, value in order.items() if key != 'errorCode'})
+            for order in result['orders']
+        ]
+
         result['orders'] = orders
         return BatchResponse(**result)
 

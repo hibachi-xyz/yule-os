@@ -1,24 +1,42 @@
 import os
-from hibachi_xyz import get_version, HibachiApiClient, HibachiApiError, Interval, TWAPConfig, TWAPQuantityMode, CreateOrder, UpdateOrder, CancelOrder
-from hibachi_xyz.types import FundingRateEstimation, Order, Side, OrderStatus, OrderType, PriceResponse, StatsResponse, TradesResponse, Trade, TakerSide
-from hibachi_xyz.helpers import format_maintenance_window, get_next_maintenance_window, get_withdrawal_fee_for_amount, print_data
-from hibachi_xyz.types import ExchangeInfo, FeeConfig, FutureContract, MaintenanceWindow, WithdrawalLimit, KlinesResponse, Kline, OpenInterestResponse, OrderBook, OrderBookLevel, AccountInfo, Asset, Position, AccountTradesResponse, AccountTrade, SettlementsResponse, Settlement, PendingOrdersResponse, Order, CapitalHistory, Transaction, WithdrawResponse, DepositInfo, CapitalBalance, InventoryResponse, CrossChainAsset, Market, TradingTier
 
 from dotenv import load_dotenv
+from hibachi_xyz import (CancelOrder, CreateOrder, HibachiApiClient,
+                         HibachiApiError, Interval, TWAPConfig,
+                         TWAPQuantityMode, UpdateOrder, get_version)
+from hibachi_xyz.env_setup import setup_environment
+from hibachi_xyz.helpers import (format_maintenance_window,
+                                 get_next_maintenance_window,
+                                 get_withdrawal_fee_for_amount, print_data)
+from hibachi_xyz.types import (AccountInfo, AccountTrade,
+                               AccountTradesResponse, Asset, CapitalBalance,
+                               CapitalHistory, CrossChainAsset, DepositInfo,
+                               ExchangeInfo, FeeConfig, FundingRateEstimation,
+                               FutureContract, InventoryResponse, Kline,
+                               KlinesResponse, MaintenanceWindow, Market,
+                               OpenInterestResponse, Order, OrderBook,
+                               OrderBookLevel, OrderStatus, OrderType,
+                               PendingOrdersResponse, Position, PriceResponse,
+                               Settlement, SettlementsResponse, Side,
+                               StatsResponse, TakerSide, Trade, TradesResponse,
+                               TradingTier, Transaction, WithdrawalLimit,
+                               WithdrawResponse)
+
 
 def example_auth_rest_api():
 
     # load environment variables from .env file
     # make sure to create a .env file with the required variables
     # or set them in your environment
-    load_dotenv()
+    api_endpoint, data_api_endpoint, api_key, account_id, private_key, _, _ = setup_environment()
+
     
     hibachi = HibachiApiClient(
-        api_url= os.environ.get('HIBACHI_API_ENDPOINT'),
-        data_api_url= os.environ.get('HIBACHI_DATA_API_ENDPOINT'),
-        api_key = os.environ.get('HIBACHI_API_KEY'),
-        account_id = os.environ.get('HIBACHI_ACCOUNT_ID'),
-        private_key = os.environ.get('HIBACHI_PRIVATE_KEY'),
+        api_url= api_endpoint,
+        data_api_url= data_api_endpoint,
+        api_key = api_key,
+        account_id = account_id,
+        private_key = private_key,
     )
 
 
@@ -294,7 +312,7 @@ def example_auth_rest_api():
     check = False
     for position in account_info.positions:
         print(f"Position: \t{position.symbol} \t{position.quantity}")
-        if position.symbol == "BTC/USDT-P" and float(position.quantity) > 0.02:
+        if position.symbol == "BTC/USDT-P" and float(position.quantity) > 0:
             check = True
 
     assert check, "Not enough BTC/USDT-P position to sell"    
