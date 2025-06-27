@@ -18,7 +18,8 @@ dependencies = [
   "toml == 0.10.2",
   "websockets >= 11.0.3",
   "python-dotenv >= 1.0.0",
-  "prettyprinter >= 0.18.0"
+  "prettyprinter >= 0.18.0",
+  "pip-system-certs"
 ]
 
 [project.optional-dependencies]
