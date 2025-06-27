@@ -1090,12 +1090,12 @@ class HibachiApiClient:
         }
 
         result = self.__send_authorized_request('POST', f"/trade/orders", json=request_data)
-        # Assuming result['orders'] contains a list of dictionaries with keys that may include 'errorCode'
+        allowed_keys = BatchResponseOrder.__dataclass_fields__.keys()
         orders = [
-            # Filter out 'errorCode' if it exists in the order dictionary
-            BatchResponseOrder(**{key: value for key, value in order.items() if key != 'errorCode'})
-            for order in result['orders']
+            BatchResponseOrder(**{k: v for k, v in order.items() if k in allowed_keys})
+            for order in result["orders"]
         ]
+
 
         result['orders'] = orders
         return BatchResponse(**result)

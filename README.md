@@ -4,12 +4,12 @@ The official Python SDK for interacting with the Hibachi cryptocurrency exchange
 
 [Official API Docs](https://api-doc.hibachi.xyz/)
 
-# Get Started
+# Get Started inside this Repository
 
 ```bash
 python3 -m venv myapp
-cd myapp
-./bin/pip install hibachi-xyz websockets prettyprinter dotenv
+source myapp/bin/activate
+./bin/pip install hibachi-xyz websockets prettyprinter dotenv pip-system-certs
 ```
 
 Create `main.py`
@@ -167,7 +167,6 @@ HIBACHI_PRIVATE_KEY_PRODUCTION=""
 * [api\_ws\_market](#api_ws_market)
   * [HibachiWSMarketClient](#api_ws_market.HibachiWSMarketClient)
     * [connect](#api_ws_market.HibachiWSMarketClient.connect)
-    * [list\_subscriptions](#api_ws_market.HibachiWSMarketClient.list_subscriptions)
     * [subscribe](#api_ws_market.HibachiWSMarketClient.subscribe)
     * [unsubscribe](#api_ws_market.HibachiWSMarketClient.unsubscribe)
 
@@ -893,24 +892,82 @@ Account Websocket Client is used to subscribe to account balance and positions.
 
 ```python
 import asyncio
-from hibachi_xyz import HibachiWSAccountClient,WebSocketSubscription,WebSocketSubscriptionTopic,print_data
+import os
+import time
+from datetime import datetime, timezone
 
-async def main():
-    client = HibachiWSAccountClient(api_key="your-api-key", account_id=123)
+from hibachi_xyz import HibachiWSAccountClient, print_data
+from hibachi_xyz.env_setup import setup_environment
 
-    await client.connect()
-    result_start = await client.stream_start()
 
-    print_data(result_start)
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-    print("Listening:")
-    counter = 0
-    while counter < 5:
-        message = await client.listen()
-        print_data(message)
-        counter += 1  
+async def example_ws_account():
+    print("Loading environment variables from .env file")
+    api_endpoint, _, api_key, account_id, _, _, _ = setup_environment()
+    ws_base_url = api_endpoint.replace("https://", "wss://")
 
-asyncio.run(main())
+    attempt = 1
+    backoff = 1  # seconds
+
+    while True:
+        print(f"[{now()}] [Attempt {attempt}] Connecting to WebSocket...")
+        myaccount_live = HibachiWSAccountClient(
+            api_endpoint=ws_base_url,
+            api_key=api_key,
+            account_id=account_id
+        )
+
+        start_time = time.time()
+        try:
+            await myaccount_live.connect()
+            result_start = await myaccount_live.stream_start()
+            print(f"[Connected] stream_start result:")
+            print_data(result_start)
+
+            print("Listening for account WebSocket messages (Ctrl+C to stop)...")
+            last_msg_time = time.time()
+
+            while True:
+                message = await myaccount_live.listen()
+                if message is None:
+                    print(f"[{now()}] No message received. (Ping sent.) "
+                          f"Last message was {int(time.time() - last_msg_time)}s ago.")
+                    continue
+                last_msg_time = time.time()
+                print_data(message)
+
+        except asyncio.CancelledError:
+            print(f"[{now()}] CancelledError caught. Cleaning up WebSocket connection.")
+            await myaccount_live.disconnect()
+            break
+
+        except Exception as e:
+            print(f"[Error] {e}")
+
+        finally:
+            duration = time.time() - start_time
+            print(f"[{now()}] Disconnected. Connection lasted {duration:.2f} seconds.")
+            await myaccount_live.disconnect()
+            print(f"[{now()}] Client cleaned up.")
+
+        print(f"Reconnecting in {backoff} seconds...\n")
+        try:
+            await asyncio.sleep(backoff)
+        except asyncio.CancelledError:
+            print(f"[{now()}] Cancelled during backoff sleep. Exiting.")
+            break
+
+        attempt += 1
+        backoff = min(backoff * 2, 60)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(example_ws_account())
+    except KeyboardInterrupt:
+        print(f"[{now()}] KeyboardInterrupt received. Exiting cleanly.")
+
 ```
 
 <a id="api_ws_account.HibachiWSAccountClient.connect"></a>
@@ -918,10 +975,14 @@ asyncio.run(main())
 #### connect
 
 ```python
-async def connect()
+async def connect(self):
+        self.websocket = await connect_with_retry(
+            web_url=self.api_endpoint + f"/ws/account?accountId={self.account_id}",
+            headers=[("Authorization", self.api_key)]
+        )
+
 ```
 
-Establish WebSocket connection with retry logic
 
 <a id="api_ws_account.HibachiWSAccountClient.stream_start"></a>
 
@@ -938,7 +999,7 @@ Get account information including assets, positions, and balances
 #### listen
 
 ```python
-async def listen() -> AccountStreamStartResult
+async def listen(self) -> Optional[dict]
 ```
 
 Listen for messages with a 5-second timeout that triggers a ping
@@ -1126,32 +1187,54 @@ Market Websocket Client is used to subscribe to market data like mark price, spo
 
 ```python
 import asyncio
-from hibachi_xyz import HibachiWSMarketClient,WebSocketSubscription,WebSocketSubscriptionTopic,print_data
 
-async def main():
+from hibachi_xyz import (HibachiWSMarketClient, WebSocketSubscription,
+                         print_data)
+
+
+async def example_ws_market():
     client = HibachiWSMarketClient()
     await client.connect()
 
-    await client.subscribe([
-        WebSocketSubscription("BTC/USDT-P", WebSocketSubscriptionTopic.MARK_PRICE),
-        WebSocketSubscription("BTC/USDT-P", WebSocketSubscriptionTopic.TRADES)
-    ])
+    subscriptions = [
+        WebSocketSubscription(symbol="BTC/USDT-P", topic="mark_price"),
+        WebSocketSubscription(symbol="BTC/USDT-P", topic="trades"),
+    ]
 
-    response = await client.list_subscriptions()
-    print("Subscriptions:")
-    print_data(response.subscriptions)
+    # Async handlers for message topics
+    async def handle_mark_price(msg):
+        print("[Mark Price]", msg)
 
-    print("Packets:")
-    counter = 0
-    while counter < 5:
-        message = await client.websocket.recv()
-        print(message)
-        counter += 1
+    async def handle_trades(msg):
+        print("[Trades]", msg)
 
-    print("Unsubscribing")
-    await client.unsubscribe(response.subscriptions)
+    client.on("mark_price", handle_mark_price)
+    client.on("trades", handle_trades)
 
-asyncio.run(main())
+    await client.subscribe(subscriptions)
+    print("Subscribed. Press Ctrl+C to exit.\n")
+
+    try:
+        # Wait forever (or until Ctrl+C)
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        print("\n[Shutdown] Ctrl+C detected.")
+    finally:
+        print("[Cleanup] Unsubscribing and disconnecting...")
+        await client.unsubscribe(subscriptions)
+        await client.disconnect()
+        print("[Done] Gracefully exited.")
+
+if __name__ == "__main__":
+    import sys
+    try:
+        asyncio.run(example_ws_market())
+    except KeyboardInterrupt:
+        # Suppress ugly stack trace on Ctrl+C
+        print("\n[Exit] Keyboard interrupt received. Shutting down cleanly.")
+        sys.exit(0)
+
 ```
 
 <a id="api_ws_market.HibachiWSMarketClient.connect"></a>
@@ -1159,37 +1242,45 @@ asyncio.run(main())
 #### connect
 
 ```python
-async def connect()
+async def connect(self):
+        self.websocket = await connect_with_retry(self.api_endpoint)
+        self._receive_task = asyncio.create_task(self._receive_loop())
+        return self
 ```
-
-Establish WebSocket connection with retry logic
-
-<a id="api_ws_market.HibachiWSMarketClient.list_subscriptions"></a>
-
-#### list\_subscriptions
-
-```python
-async def list_subscriptions() -> WebSocketMarketSubscriptionListResponse
-```
-
-List market subscriptions that are currently active
 
 <a id="api_ws_market.HibachiWSMarketClient.subscribe"></a>
 
 #### subscribe
 
 ```python
-async def subscribe(subscriptions: List[WebSocketSubscription]) -> bool
+async def subscribe(self, subscriptions: List[WebSocketSubscription]):
+        message = {
+            "method": "subscribe",
+            "parameters": {
+                "subscriptions": [
+                    {**asdict(sub), "topic": sub.topic} for sub in subscriptions
+                ]
+            }
+        }
+        await self.websocket.send(json.dumps(message))
+
 ```
-
-Create new market subscriptions.
-
 <a id="api_ws_market.HibachiWSMarketClient.unsubscribe"></a>
 
 #### unsubscribe
 
 ```python
-async def unsubscribe(subscriptions: List[WebSocketSubscription]) -> bool
+async def unsubscribe(self, subscriptions: List[WebSocketSubscription]):
+        message = {
+            "method": "unsubscribe",
+            "parameters": {
+                "subscriptions": [
+                    {**asdict(sub), "topic": sub.topic} for sub in subscriptions
+                ]
+            }
+        }
+        await self.websocket.send(json.dumps(message))
+
 ```
 
 Unsubscribe from specific market subscriptions

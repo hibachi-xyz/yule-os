@@ -28,69 +28,37 @@ from hibachi_xyz.types import (AccountSnapshot, Nonce, OrderModifyParams,
 api_endpoint, data_api_endpoint, api_key, account_id, private_key, public_key, _ = setup_environment()
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(15)
 async def test_market_websocket():
-    client = HibachiWSMarketClient(data_api_endpoint.replace("https://", "wss://"))
+    _, data_api_endpoint, *_ = setup_environment()
+    ws_endpoint = data_api_endpoint.replace("https://", "wss://")
+
+    client = HibachiWSMarketClient(api_endpoint=ws_endpoint)
 
     try:
         await client.connect()
-        
-        # Subscribe to topics
+
         subscriptions = [
             WebSocketSubscription("BTC/USDT-P", WebSocketSubscriptionTopic.MARK_PRICE),
-            WebSocketSubscription("BTC/USDT-P", WebSocketSubscriptionTopic.TRADES)
+            WebSocketSubscription("BTC/USDT-P", WebSocketSubscriptionTopic.TRADES),
         ]
         await client.subscribe(subscriptions)
 
-        response = await client.list_subscriptions()
-        assert len(response.subscriptions) == 2
+        # Receive 3 valid messages
+        count = 0
+        while count < 3:
+            msg = await client.websocket.recv()
+            parsed = json.loads(msg)
+            assert "symbol" in parsed
+            assert "topic" in parsed
+            count += 1
 
-        # Test received subscription
-        countmatches = 0
-        for sub in response.subscriptions:
-            if sub.topic == WebSocketSubscriptionTopic.MARK_PRICE:
-                countmatches += 1
-                assert sub.symbol == "BTC/USDT-P"
-            if sub.topic == WebSocketSubscriptionTopic.TRADES:
-                countmatches += 1
-                assert sub.symbol == "BTC/USDT-P"
-        assert countmatches == 2
+        await client.unsubscribe(subscriptions)
 
-        # Receive messages
-        counter = 0
-        while counter < 5:
-            message = await client.websocket.recv()
-            print(message)
-            counter += 1
-
-        # Unsubscribe after the test
-        await client.unsubscribe(response.subscriptions)
-        response = await client.list_subscriptions()
-        assert len(response.subscriptions) == 0
-
-    except Exception as e:
-        print(f"Error: {e}")
     finally:
-        # Ensure WebSocket is properly closed and cleanup
-        print("Finished WebSocket interaction, cleaning up...")
-
-        # Get all tasks in the event loop
-        tasks = asyncio.all_tasks()
-
-        # Cancel all tasks except the current one (this test task itself)
-        for task in tasks:
-            # Skip canceling the current test task
-            if task != asyncio.current_task() and not task.done():
-                print(f"Cancelling task: {task}")
-                task.cancel()
-
-        # Await all canceled tasks to ensure they are fully completed or canceled
-        for task in tasks:
-            if task != asyncio.current_task() and not task.done():  # Skip the current task
-                try:
-                    await task  # Await the task to ensure it has fully finished
-                except asyncio.CancelledError:
-                    print(f"Task {task} was cancelled as expected.")
-                                  
+        await client.disconnect()
+        
+                                          
 @pytest.mark.asyncio
 async def test_trade_websocket():
     client = HibachiWSTradeClient(
@@ -237,42 +205,28 @@ async def test_trade_websocket():
     
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(15)
 async def test_account_websocket():
+    api_endpoint, _, api_key, account_id, *_ = setup_environment()
+    ws_endpoint = api_endpoint.replace("https://", "wss://")
+
     client = HibachiWSAccountClient(
-        api_endpoint=api_endpoint.replace("https://", "wss://"), 
-        api_key=api_key, 
+        api_endpoint=ws_endpoint,
+        api_key=api_key,
         account_id=account_id
     )
+
     try:
         await client.connect()
-        result_start = await client.stream_start()
-        assert isinstance(result_start.listenKey,str)
-        assert isinstance(result_start.accountSnapshot, AccountSnapshot)
-        assert len(result_start.accountSnapshot.positions) > 0
-        first_position = result_start.accountSnapshot.positions[0]
-        assert isinstance(first_position, Position)
-    except Exception as e:
-        print(f"Error: {e}")
+        result = await client.stream_start()
+
+        assert isinstance(result.listenKey, str), "listenKey should be a string"
+        assert isinstance(result.accountSnapshot, AccountSnapshot), "accountSnapshot missing"
+        assert isinstance(result.accountSnapshot.positions, list)
+        assert result.accountSnapshot.positions, "No positions returned"
+
+        first_position = result.accountSnapshot.positions[0]
+        assert isinstance(first_position, Position), "Invalid Position object"
+
     finally:
-        # Ensure cleanup of tasks and WebSocket connection
-        print("Finished WebSocket interaction, cleaning up...")
-        try:
-            # Disconnect the WebSocket connection
-            await client.disconnect()
-        except Exception as e:
-            print(f"Error during disconnect: {e}")
-        
-        # Handle any CancelledError to prevent test failure
-        tasks = asyncio.all_tasks()
-        for task in tasks:
-            if not task.done():
-                print(f"Cancelling task: {task}")
-                task.cancel()
-
-        for task in tasks:
-            try:
-                await task  # Await the task again to ensure it has fully finished
-            except asyncio.CancelledError:
-                print(f"Task {task} was cancelled as expected.")
-
-    
+        await client.disconnect()

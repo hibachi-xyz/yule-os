@@ -1,8 +1,9 @@
-from typing import List, Tuple, Optional, Dict, Any, TypedDict, Union, TypeAlias
-from decimal import Decimal
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum
+from typing import (Any, Dict, List, Optional, Tuple, TypeAlias, TypedDict,
+                    Union)
 
 
 class Interval(Enum):
@@ -198,7 +199,7 @@ class PriceResponse:
 class BatchResponseOrder:
     nonce: Optional[Nonce]
     orderId: Optional[OrderId]
-
+    
     def __init__(self, 
                  nonce: Optional[Nonce] = None, 
                  orderId: Optional[OrderId] = None):
