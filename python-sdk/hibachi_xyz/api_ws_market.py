@@ -1,107 +1,86 @@
 import asyncio
-from dataclasses import asdict
+import contextlib
 import json
+from dataclasses import asdict
+from typing import Callable, Dict, List, Optional
+
 import websockets
-from typing import List, Dict, Callable
 
-from .types import (
-    WebSocketMarketSubscriptionListResponse,
-    WebSocketSubscription,
-    WebSocketSubscriptionTopic,
-)
+from .helpers import connect_with_retry, default_data_api_url
+from .types import WebSocketSubscription
 
-from .helpers import print_data, connect_with_retry, default_data_api_url
 
 class HibachiWSMarketClient:
-    """
-    Market Websocket Client is used to subscribe to market data like mark price, spot price, funding rate, trades, candle sticks, orderbook, ask/bid prices.
-
-    ## Example usage:
-
-    ```python
-    import asyncio
-    from hibachi_xyz import HibachiWSMarketClient,WebSocketSubscription,WebSocketSubscriptionTopic,print_data
-
-    async def main():
-        client = HibachiWSMarketClient()
-        await client.connect()
-        
-        await client.subscribe([
-            WebSocketSubscription("BTC/USDT-P", WebSocketSubscriptionTopic.MARK_PRICE),
-            WebSocketSubscription("BTC/USDT-P", WebSocketSubscriptionTopic.TRADES)
-        ])
-
-        response = await client.list_subscriptions()
-        print("Subscriptions:")
-        print_data(response.subscriptions)
-
-        print("Packets:")
-        counter = 0
-        while counter < 5:
-            message = await client.websocket.recv()
-            print(message)
-            counter += 1
-
-        print("Unsubscribing")
-        await client.unsubscribe(response.subscriptions)
-
-    asyncio.run(main())
-    ```
-
-    """
     def __init__(self, api_endpoint: str = default_data_api_url):
         self.api_endpoint = api_endpoint.replace("https://", "wss://") + "/ws/market"
-        self.websocket = None
-        self.message_id = 0
-        self._event_handlers: Dict[str, List[Callable]] = {}
-        self._response_handlers: Dict[int, Callable] = {}
+        self.websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self._event_handlers: Dict[str, List[Callable[[dict], None]]] = {}
+        self._receive_task: Optional[asyncio.Task] = None
 
     async def connect(self):
-        """Establish WebSocket connection with retry logic"""
         self.websocket = await connect_with_retry(self.api_endpoint)
+        self._receive_task = asyncio.create_task(self._receive_loop())
         return self
 
-    async def list_subscriptions(self) -> WebSocketMarketSubscriptionListResponse:
-        """List market subscriptions that are currently active"""
-        await self.websocket.send(json.dumps({
-            "method": "list_subscriptions"
-        }))
-        response_data: Dict[str, any] = {}
-        max_packets = 10
-        counter = 0
-
-        while response_data.get("subscriptions") is None and counter < max_packets:
-            counter += 1    
-            response = await self.websocket.recv()
-            response_data = json.loads(response)  
-
-        if response_data.get("subscriptions") is not None:
-            response_data["subscriptions"] = [WebSocketSubscription(**{**sub, "topic": WebSocketSubscriptionTopic(sub["topic"])}) for sub in response_data["subscriptions"]]
-            return WebSocketMarketSubscriptionListResponse(**response_data)
-        
-        raise ValueError(f"Could not list subscriptions.")
-
-    async def subscribe(self, subscriptions: List[WebSocketSubscription]) -> bool:  
-        """
-        Create new market subscriptions.
-        """      
-        await self.websocket.send(json.dumps({
+    async def subscribe(self, subscriptions: List[WebSocketSubscription]):
+        message = {
             "method": "subscribe",
             "parameters": {
-                "subscriptions": [{**asdict(sub), "topic": sub.topic.value} for sub in subscriptions]
+                "subscriptions": [
+                    {
+                        **asdict(sub),
+                        "topic": sub.topic.value
+                    }
+                    for sub in subscriptions
+                ]
             }
-        }))
-        return await self.websocket.recv()
-    
-    async def unsubscribe(self, subscriptions: List[WebSocketSubscription]) -> bool:
-        """
-        Unsubscribe from specific market subscriptions
-        """
-        packet = json.dumps({
+        }
+        await self.websocket.send(json.dumps(message))
+
+    async def unsubscribe(self, subscriptions: List[WebSocketSubscription]):
+        message = {
             "method": "unsubscribe",
             "parameters": {
-                "subscriptions": [{**asdict(sub), "topic": sub.topic.value} for sub in subscriptions]
+                "subscriptions": [
+                    {
+                        **asdict(sub),
+                        "topic": sub.topic.value
+                    }
+                    for sub in subscriptions
+                ]
             }
-        })
-        await self.websocket.send(packet)
-        return True
+        }
+        await self.websocket.send(json.dumps(message))
+
+    def on(self, topic: str, handler: Callable[[dict], None]):
+        """Register a callback for raw topic name (e.g., 'mark_price')."""
+        if topic not in self._event_handlers:
+            self._event_handlers[topic] = []
+        self._event_handlers[topic].append(handler)
+
+    async def _receive_loop(self):
+        try:
+            while True:
+                raw = await self.websocket.recv()
+                msg = json.loads(raw)
+                topic = msg.get("topic")
+                if topic and topic in self._event_handlers:
+                    for handler in self._event_handlers[topic]:
+                        await handler(msg)
+        except asyncio.CancelledError:
+            pass
+        except websockets.ConnectionClosed:
+            print("[MarketClient] WebSocket closed.")
+        except Exception as e:
+            print(f"[MarketClient] Receive loop error: {e}")
+            
+    async def disconnect(self):
+        if self._receive_task:
+            self._receive_task.cancel()
+            try:
+                await self._receive_task
+            except asyncio.CancelledError:
+                pass
+        if self.websocket:
+            await self.websocket.close()
+            self.websocket = None

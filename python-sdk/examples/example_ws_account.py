@@ -1,90 +1,76 @@
 import asyncio
 import os
+import time
+from datetime import datetime, timezone
 
-from hibachi_xyz import (HibachiWSAccountClient, WebSocketSubscription,
-                         WebSocketSubscriptionTopic, print_data)
+from hibachi_xyz import HibachiWSAccountClient, print_data
 from hibachi_xyz.env_setup import setup_environment
 
 
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
 async def example_ws_account():
+    print("Loading environment variables from .env file")
+    api_endpoint, _, api_key, account_id, _, _, _ = setup_environment()
+    ws_base_url = api_endpoint.replace("https://", "wss://")
 
-    # load environment variables from .env file
-    # make sure to create a .env file with the required variables
-    # or set them in your environment
-    api_endpoint, data_api_endpoint, api_key, account_id, _, _, _ = setup_environment()
+    attempt = 1
+    backoff = 1  # seconds
 
-    
-    myaccount_live = HibachiWSAccountClient(
-        api_endpoint=api_endpoint.replace("https://", "wss://"),
-        api_key = api_key,
-        account_id = account_id
-    )
-    
-    try:
-        # Connect to the WebSocket
-        await myaccount_live.connect()
+    while True:
+        print(f"[{now()}] [Attempt {attempt}] Connecting to WebSocket...")
+        myaccount_live = HibachiWSAccountClient(
+            api_endpoint=ws_base_url,
+            api_key=api_key,
+            account_id=account_id
+        )
 
-        # Start the stream
-        result_start = await myaccount_live.stream_start()
-        print_data(result_start)
-        # {
-        #     'accountSnapshot': {
-        #         'account_id': 273,
-        #         'balance': '341.600700',
-        #         'positions': [
-        #             {
-        #                 'direction': 'Long',
-        #                 'entryNotional': '290.181588',
-        #                 'markPrice': '143.4090474',
-        #                 'notionalValue': '286.818094',
-        #                 'openPrice': '145.0907940',
-        #                 'quantity': '2.00000000',
-        #                 'symbol': 'SOL/USDT-P',
-        #                 'unrealizedFundingPnl': '-0.040593',
-        #                 'unrealizedTradingPnl': '-3.363493'
-        #             },
-        #             {
-        #                 'direction': 'Long',
-        #                 'entryNotional': '16635.158909',
-        #                 'markPrice': '107229.48789',
-        #                 'notionalValue': '16599.124725',
-        #                 'openPrice': '107462.26685',
-        #                 'quantity': '0.1548000000',
-        #                 'symbol': 'BTC/USDT-P',
-        #                 'unrealizedFundingPnl': '0.000000',
-        #                 'unrealizedTradingPnl': '-36.034183'
-        #             }
-        #         ]
-        #     },
-        #     'listenKey': '273-dnqbex2pvgaogsb6akyxp4mp65cu7hkxlq'
-        # }
-    
+        start_time = time.time()
+        try:
+            await myaccount_live.connect()
+            result_start = await myaccount_live.stream_start()
+            print(f"[Connected] stream_start result:")
+            print_data(result_start)
 
-        # Listening for messages from the WebSocket
-        print("Listening:")
-        # Listening:
-        # ping...
-        # pong!
-        # None
-        counter = 0
-        while counter < 10:  # You can adjust the number of messages to listen to
-            message = await myaccount_live.listen()
-            if message is None:
-                print("Connection closed or lost.")
-                break
-            print_data(message)
-            counter += 1
+            print("Listening for account WebSocket messages (Ctrl+C to stop)...")
+            last_msg_time = time.time()
 
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        # Clean up and close the WebSocket connection
-        print("Closing connection.")
-        await myaccount_live.disconnect()
+            while True:
+                message = await myaccount_live.listen()
+                if message is None:
+                    print(f"[{now()}] No message received. (Ping sent.) "
+                          f"Last message was {int(time.time() - last_msg_time)}s ago.")
+                    continue
+                last_msg_time = time.time()
+                print_data(message)
 
-    print_data(result_start)
-    
+        except asyncio.CancelledError:
+            print(f"[{now()}] CancelledError caught. Cleaning up WebSocket connection.")
+            await myaccount_live.disconnect()
+            break
+
+        except Exception as e:
+            print(f"[Error] {e}")
+
+        finally:
+            duration = time.time() - start_time
+            print(f"[{now()}] Disconnected. Connection lasted {duration:.2f} seconds.")
+            await myaccount_live.disconnect()
+            print(f"[{now()}] Client cleaned up.")
+
+        print(f"Reconnecting in {backoff} seconds...\n")
+        try:
+            await asyncio.sleep(backoff)
+        except asyncio.CancelledError:
+            print(f"[{now()}] Cancelled during backoff sleep. Exiting.")
+            break
+
+        attempt += 1
+        backoff = min(backoff * 2, 60)
 
 if __name__ == "__main__":
-    # This code only runs when the file is executed directly
-    asyncio.run(example_ws_account())
+    try:
+        asyncio.run(example_ws_account())
+    except KeyboardInterrupt:
+        print(f"[{now()}] KeyboardInterrupt received. Exiting cleanly.")
