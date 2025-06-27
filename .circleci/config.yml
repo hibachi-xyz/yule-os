@@ -25,6 +25,8 @@ jobs:
     working_directory: /home/circleci/project/
     executor: python-executor
     circleci_ip_ranges: true
+    environment:
+      ENVIRONMENT: << pipeline.parameters.environment >>
     steps:
       - checkout
       - run:
