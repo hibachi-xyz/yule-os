@@ -19,9 +19,6 @@ async def example_ws_account():
         api_key = api_key,
         account_id = account_id
     )
-
-    # await myaccount_live.connect()
-    # result_start = await myaccount_live.stream_start()
     
     try:
         # Connect to the WebSocket
