@@ -9,9 +9,9 @@ parameters:
     default: true
   publish_sdk:
     type: boolean
-    default: false
+    default: true
   environment:
-    default: "test"
+    default: "production"
     type: enum
     enum: [ "test","staging","production" ]
 
@@ -80,7 +80,8 @@ jobs:
             - run:
                 name: Build SDK
                 command: |
-                  python -m build -s -w python-sdk
+                  echo 'dry run publish'
+                  # python -m build -s -w python-sdk
             - run:
                 name: Publish to PyPI
                 command: |
