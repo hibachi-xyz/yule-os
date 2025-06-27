@@ -36,8 +36,6 @@ jobs:
             source myapp/bin/activate 
             pip install --upgrade pip
             pip install 'hibachi-xyz[dev]'
-            echo ${CIRCLE_PIPELINE_PARAMETERS_ENVIRONMENT}
-            echo "export ENVIRONMENT=${CIRCLE_PIPELINE_PARAMETERS_ENVIRONMENT}" >> $BASH_ENV
             ENVIRONMENT=$ENVIRONMENT pytest python-sdk/
       - slack/notify:
           event: fail
