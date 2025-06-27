@@ -4,12 +4,12 @@ The official Python SDK for interacting with the Hibachi cryptocurrency exchange
 
 [Official API Docs](https://api-doc.hibachi.xyz/)
 
-# Get Started inside this Repository
+# Get Started with PyPI
 
 ```bash
+pip install hibachi-xyz==<x.x.x>
 python3 -m venv myapp
 source myapp/bin/activate
-./bin/pip install hibachi-xyz websockets prettyprinter dotenv
 ```
 
 Create `main.py`
