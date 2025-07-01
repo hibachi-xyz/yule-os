@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hibachi_xyz"
-version = "0.1.7"
+version = "0.1.9"
 authors = [
  { name = "Hibachi Engineer" }
 ]
 description = "Hibachi SDK for accessing the API"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 license = "MIT" 
 dependencies = [
   "eth_keys == 0.6.1",
@@ -18,7 +18,8 @@ dependencies = [
   "toml == 0.10.2",
   "websockets >= 11.0.3",
   "python-dotenv >= 1.0.0",
-  "prettyprinter >= 0.18.0"
+  "prettyprinter >= 0.18.0",
+  "pip-system-certs"
 ]
 
 [project.optional-dependencies]

@@ -9,7 +9,7 @@ The official Python SDK for interacting with the Hibachi cryptocurrency exchange
 ```bash
 python3 -m venv myapp
 source myapp/bin/activate
-./bin/pip install hibachi-xyz websockets prettyprinter dotenv
+./bin/pip install hibachi-xyz websockets prettyprinter dotenv pip-system-certs
 ```
 
 Create `main.py`

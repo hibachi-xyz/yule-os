@@ -21,12 +21,12 @@ async def test_example_auth_rest_api():
 @pytest.mark.asyncio
 @pytest.mark.timeout(10)
 async def test_example_ws_market():
-    msgs = await example_ws_market_test()
+    msgs = await example_ws_market(max_messages=3)
     assert msgs
 
 @pytest.mark.asyncio
 async def test_example_ws_account():
-    msgs = await example_ws_account_test()
+    msgs = await example_ws_account(max_messages=3)
     assert msgs
 
 @pytest.mark.asyncio

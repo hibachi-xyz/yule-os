@@ -11,20 +11,31 @@ from hibachi_xyz.types import (AccountSnapshot, AccountStreamStartResult,
 
 class HibachiWSAccountClient:
     def __init__(self, api_key: str, account_id: str, api_endpoint: str = default_api_url):
-        # self.api_endpoint = api_endpoint.replace("https://", "wss://") + "/ws/account"
         self.api_endpoint = api_endpoint.replace("https://", "wss://")
         self.websocket = None
         self.message_id = 0
         self.api_key = api_key
         self.account_id = int(account_id)
         self.listenKey: Optional[str] = None
+        self._event_handlers: Dict[str, List[Callable[[dict], None]]] = {}
 
+    def on(self, topic: str, handler: Callable[[dict], None]):
+        if topic not in self._event_handlers:
+            self._event_handlers[topic] = []
+        self._event_handlers[topic].append(handler)
+            
     async def connect(self):
         self.websocket = await connect_with_retry(
             web_url=self.api_endpoint + f"/ws/account?accountId={self.account_id}",
             headers=[("Authorization", self.api_key)]
         )
 
+    def _next_message_id(self) -> int:
+        self.message_id += 1
+        return self.message_id
+
+    def _timestamp(self) -> int:
+        return int(time.time())
 
     def _next_message_id(self) -> int:
         self.message_id += 1
@@ -76,7 +87,14 @@ class HibachiWSAccountClient:
     async def listen(self) -> Optional[dict]:
         try:
             response = await asyncio.wait_for(self.websocket.recv(), timeout=15)
-            return json.loads(response)
+            message = json.loads(response)
+
+            topic = message.get("topic")
+            if topic in self._event_handlers:
+                for handler in self._event_handlers[topic]:
+                    await handler(message)
+
+            return message
         except asyncio.TimeoutError:
             await self.ping()
             return None
