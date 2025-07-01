@@ -4,14 +4,11 @@ orbs:
   slack: circleci/slack@5.0
 
 parameters:
-  run_integration_tests:
-    type: boolean
-    default: true
   publish_sdk:
     type: boolean
-    default: true
+    default: false
   environment:
-    default: "production"
+    default: "test"
     type: enum
     enum: [ "test","staging","production" ]
 
@@ -88,10 +85,8 @@ jobs:
                   # twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
                   echo 'dry run publish'
 
-
 workflows:
   sdk-tests-and-deploy:
-    when: << pipeline.parameters.run_integration_tests >>
     jobs:
       - integration-tests:
           context:
