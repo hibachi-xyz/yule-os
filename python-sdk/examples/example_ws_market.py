@@ -54,6 +54,7 @@ async def example_ws_market(max_messages: int = None):
 # Command line usage
 if __name__ == "__main__":
     import sys
+    
     try:
         asyncio.run(example_ws_market())
     except KeyboardInterrupt:

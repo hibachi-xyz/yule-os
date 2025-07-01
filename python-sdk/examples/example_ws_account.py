@@ -93,6 +93,7 @@ async def example_ws_account(max_messages: int = None):
         attempt += 1
         backoff = min(backoff * 2, 60)
 
+
 if __name__ == "__main__":
     try:
         asyncio.run(example_ws_account())

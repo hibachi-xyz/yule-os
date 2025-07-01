@@ -37,13 +37,6 @@ class HibachiWSAccountClient:
     def _timestamp(self) -> int:
         return int(time.time())
 
-    def _next_message_id(self) -> int:
-        self.message_id += 1
-        return self.message_id
-
-    def _timestamp(self) -> int:
-        return int(time.time())
-
     async def stream_start(self) -> AccountStreamStartResult:
         message = {
             "id": self._next_message_id(),
