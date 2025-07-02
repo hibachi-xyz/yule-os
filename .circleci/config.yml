@@ -4,36 +4,36 @@ orbs:
   slack: circleci/slack@5.0
 
 parameters:
-  run_integration_tests:
-    type: boolean
-    default: false
   publish_sdk:
     type: boolean
     default: false
+  environment:
+    default: "test"
+    type: enum
+    enum: [ "test","staging","production" ]
 
 executors:
   python-executor:
     docker:
-      - image: cimg/python:3.11
-    working_directory: ~/repo
+      - image: cimg/python:3.13
 
 jobs:
   integration-tests:
+    working_directory: /home/circleci/project/
     executor: python-executor
     circleci_ip_ranges: true
+    environment:
+      ENVIRONMENT: << pipeline.parameters.environment >>
     steps:
       - checkout
       - run:
-          name: Install SDK and dependencies
+          name: Install SDK and dependencies and Run PyTest
           command: |
-            pip install pytest
-            pip install ./python-sdk
-            pip install -U pip setuptools wheel
-            pip install pytest prettyprinter python-dotenv websockets pytest-asyncio
-      - run:
-          name: Run integration tests
-          command: |
-            pytest python-sdk/
+            python3 -m venv myapp
+            source myapp/bin/activate 
+            pip install --upgrade pip
+            pip install 'hibachi-xyz[dev]'
+            ENVIRONMENT=$ENVIRONMENT pytest python-sdk/
       - slack/notify:
           event: fail
           channel: python-sdk-tests
@@ -61,26 +61,32 @@ jobs:
     executor: python-executor
     steps:
       - checkout
-      - run:
-          name: Patch version dynamically
-          command: |
-            VERSION_SUFFIX=$(date +%Y%m%d%H%M%S)
-            sed -i "s/^version = .*/version = \"0.0.1.dev$VERSION_SUFFIX\"/" python-sdk/pyproject.toml
-            grep version python-sdk/pyproject.toml
-      - run: pip install build twine
-      - run:
-          name: Build SDK
-          command: |
-            python -m build -s -w python-sdk
-      - run:
-          name: Publish to PyPI
-          command: |
-            twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
-
+      - when:
+          condition: 
+            and: 
+              - << pipeline.parameters.publish_sdk >>
+              - << pipeline.parameters.environment == "production" >>
+          steps:
+            - run:
+                name: Patch version dynamically
+                command: |
+                  VERSION_SUFFIX=$(date +%Y%m%d%H%M%S)
+                  sed -i "s/^version = .*/version = \"0.0.1.dev$VERSION_SUFFIX\"/" python-sdk/pyproject.toml
+                  grep version python-sdk/pyproject.toml
+            - run: pip install build twine
+            - run:
+                name: Build SDK
+                command: |
+                  echo 'dry run publish'
+                  # python -m build -s -w python-sdk
+            - run:
+                name: Publish to PyPI
+                command: |
+                  # twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
+                  echo 'dry run publish'
 
 workflows:
   sdk-tests-and-deploy:
-    when: << pipeline.parameters.run_integration_tests >>
     jobs:
       - integration-tests:
           context:
@@ -88,3 +94,10 @@ workflows:
       - deploy-to-pypi:
           requires:
             - integration-tests
+          filters:
+            branches:
+              only:
+                - release
+
+
+  
