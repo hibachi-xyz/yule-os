@@ -1,149 +1,75 @@
-import hmac
-import json
 from dataclasses import asdict
 from enum import Enum
 from hashlib import sha256
+import hmac
+import json
 from math import floor
 from time import time, time_ns
-from typing import Any, Dict, List, Optional, Tuple, TypeAlias, Union
+from typing import Any, Dict, Optional, TypeAlias, List, Tuple, Union
 
-import requests
 from eth_keys import keys
-from hibachi_xyz.helpers import default_api_url, default_data_api_url, print_data
+import requests
+
 from hibachi_xyz.types import (
-    AccountInfo,
-    AccountTrade,
-    AccountTradesResponse,
-    Asset,
     BatchOrder,
     BatchResponse,
     BatchResponseOrder,
-    CapitalBalance,
-    CapitalHistory,
-    CrossChainAsset,
-    DepositInfo,
     ExchangeInfo,
     FeeConfig,
-    FundingRateEstimation,
     FutureContract,
-    HibachiApiError,
-    Interval,
-    InventoryResponse,
-    Kline,
-    KlinesResponse,
     MaintenanceWindow,
-    Market,
-    MarketInfo,
-    Nonce,
-    OpenInterestResponse,
     Order,
-    OrderBook,
-    OrderBookLevel,
-    OrderId,
+    OrderIdVariant,
     PendingOrdersResponse,
-    Position,
+    TriggerDirection,
+    WithdrawalLimit,
     PriceResponse,
-    Settlement,
-    SettlementsResponse,
-    Side,
+    FundingRateEstimation,
     StatsResponse,
-    TakerSide,
-    Trade,
     TradesResponse,
-    TradingTier,
+    Trade,
+    TakerSide,
+    KlinesResponse,
+    Kline,
+    OpenInterestResponse,
+    OrderBookLevel,
+    OrderBook,
+    AccountInfo,
+    Asset,
+    Position,
+    AccountTradesResponse,
+    AccountTrade,
+    SettlementsResponse,
+    Settlement,
+    Order,
+    CapitalBalance,
+    CapitalHistory,
     Transaction,
+    WithdrawRequest,
+    WithdrawResponse,
+    DepositInfo,
+    Side,
+    InventoryResponse,
+    CrossChainAsset,
+    FeeConfig,
+    Market,
+    TradingTier,
+    MarketInfo,
     TransferRequest,
     TransferResponse,
     TWAPConfig,
-    WithdrawalLimit,
-    WithdrawRequest,
-    WithdrawResponse,
+    TPSLConfig,
+    HibachiApiError,
+    Interval,
+    Nonce,
+    OrderId,
+    OrderFlags,
+    CreateOrder,
+    UpdateOrder,
+    CancelOrder,
 )
 
-
-class CreateOrder:
-    action: str = "place"
-    symbol: str
-    side: Side
-    quantity: float
-    max_fees_percent: float
-    price: Optional[float]
-    trigger_price: Optional[float]
-    twap_config: Optional[float]
-    creation_deadline: Optional[float]
-
-    def __init__(
-        self,
-        symbol: str,
-        side: Side,
-        quantity: float,
-        max_fees_percent: float,
-        price: Optional[float] = None,
-        trigger_price: Optional[float] = None,
-        twap_config: Optional[TWAPConfig] = None,
-        creation_deadline: Optional[float] = None,
-    ):
-        if side == Side.BUY:
-            side = Side.BID
-        elif side == Side.SELL:
-            side = Side.ASK
-
-        self.symbol = symbol
-        self.side = side
-        self.quantity = quantity
-        self.max_fees_percent = max_fees_percent
-        self.price = price
-        self.trigger_price = trigger_price
-        self.twap_config = twap_config
-        self.creation_deadline = creation_deadline
-
-
-class UpdateOrder:
-    action: str = "modify"
-    order_id: int
-    # needed for creating the signature
-    symbol: str
-    # needed for creating the signature
-    side: Side
-    quantity: float
-    max_fees_percent: float
-    price: Optional[float]
-    trigger_price: Optional[float]
-
-    def __init__(
-        self,
-        order_id: int,
-        symbol: str,
-        side: Side,
-        quantity: float,
-        max_fees_percent: float,
-        price: Optional[float] = None,
-        trigger_price: Optional[float] = None,
-        creation_deadline: Optional[float] = None,
-    ):
-        if side == Side.BUY:
-            side = Side.BID
-        elif side == Side.SELL:
-            side = Side.ASK
-
-        self.order_id = order_id
-        self.symbol = symbol
-        self.side = side
-        self.quantity = quantity
-        self.max_fees_percent = max_fees_percent
-        self.price = price
-        self.trigger_price = trigger_price
-        self.creation_deadline = creation_deadline
-
-
-class CancelOrder:
-    action: str = "cancel"
-    order_id: Optional[int]
-    nonce: Optional[int]
-
-    def __init__(self, order_id: Optional[int] = None, nonce: Optional[int] = None):
-        self.order_id = order_id
-        self.nonce = nonce
+from hibachi_xyz.helpers import print_data, default_api_url, default_data_api_url
 
 
 def price_to_bytes(price: float, contract: FutureContract) -> bytes:
@@ -546,7 +472,7 @@ class HibachiApiClient:
             id: int
             quantity: str
             status: str
-            timestamp: int
+            timestampSec: int
             token: Optional[str]
             transactionHash: Union[str,str]
             transactionType: str
@@ -1011,6 +937,8 @@ class HibachiApiClient:
         trigger_price: Optional[float] = None,
         twap_config: Optional[TWAPConfig] = None,
         creation_deadline: Optional[int] = None,
+        order_flags: Optional[OrderFlags] = None,
+        tpsl: Optional[TPSLConfig] = None,
     ) -> tuple[Nonce, OrderId]:
         """
         Place a market order
@@ -1037,6 +965,22 @@ class HibachiApiClient:
         if twap_config is not None and trigger_price is not None:
             raise ValueError("Can not set trigger price for TWAP order")
 
+        if twap_config is not None and tpsl is not None:
+            raise ValueError("Can not set tpsl for TWAP order")
+
+        if tpsl is not None and len(tpsl.legs) > 0:
+            return self._place_parent_with_tpsl(
+                symbol=symbol,
+                price=None,
+                quantity=quantity,
+                side=side,
+                max_fees_percent=max_fees_percent,
+                trigger_price=trigger_price,
+                creation_deadline=creation_deadline,
+                order_flags=order_flags,
+                tpsl=tpsl,
+            )
+
         nonce = time_ns() // 1_000
         request_data = self._create_order_request_data(
             nonce,
@@ -1048,6 +992,7 @@ class HibachiApiClient:
             None,
             creation_deadline,
             twap_config=twap_config,
+            order_flags=order_flags,
         )
         request_data["accountId"] = self.account_id
         response = self.__send_authorized_request(
@@ -1065,6 +1010,8 @@ class HibachiApiClient:
         max_fees_percent: float,
         trigger_price: Optional[float] = None,
         creation_deadline: Optional[int] = None,
+        order_flags: Optional[OrderFlags] = None,
+        tpsl: Optional[TPSLConfig] = None,
     ) -> tuple[Nonce, OrderId]:
         """
         Place a limit order
@@ -1088,6 +1035,19 @@ class HibachiApiClient:
         elif side == Side.SELL:
             side = Side.ASK
 
+        if tpsl is not None and len(tpsl.legs) > 0:
+            return self._place_parent_with_tpsl(
+                symbol=symbol,
+                price=price,
+                quantity=quantity,
+                side=side,
+                max_fees_percent=max_fees_percent,
+                trigger_price=trigger_price,
+                creation_deadline=creation_deadline,
+                order_flags=order_flags,
+                tpsl=tpsl,
+            )
+
         nonce = time_ns() // 1_000
         request_data = self._create_order_request_data(
             nonce,
@@ -1098,6 +1058,7 @@ class HibachiApiClient:
             trigger_price,
             price,
             creation_deadline,
+            order_flags=order_flags,
         )
         request_data["accountId"] = self.account_id
         response = self.__send_authorized_request(
@@ -1105,6 +1066,57 @@ class HibachiApiClient:
         )
         order_id = int(response["orderId"])
         return (nonce, order_id)
+
+    def _place_parent_with_tpsl(
+        self,
+        symbol: str,
+        quantity: float,
+        price: Optional[float],
+        side: Side,
+        max_fees_percent: float,
+        trigger_price: Optional[float] = None,
+        creation_deadline: Optional[int] = None,
+        order_flags: Optional[OrderFlags] = None,
+        tpsl: Optional[TPSLConfig] = None,
+    ) -> tuple[Nonce, OrderId]:
+        parent_order_request = CreateOrder(
+            symbol=symbol,
+            quantity=quantity,
+            side=side,
+            price=price,
+            trigger_price=trigger_price,
+            creation_deadline=creation_deadline,
+            order_flags=order_flags,
+            max_fees_percent=max_fees_percent,
+        )
+
+        nonce = time_ns() // 1_000
+
+        tpsl_order_requests = tpsl._as_requests(
+            parent_symbol=symbol,
+            parent_quantity=quantity,
+            parent_side=side,
+            parent_nonce=nonce,
+            max_fees_percent=max_fees_percent,
+        )
+
+        orders = [parent_order_request] + tpsl_order_requests
+        orders_data = [
+            self.__batch_order_request_data(nonce + i, order)
+            for (i, order) in enumerate(orders)
+        ]
+        request_data = {"accountId": int(self.account_id), "orders": orders_data}
+
+        result = self.__send_authorized_request(
+            "POST", f"/trade/orders", json=request_data
+        )
+        orders = [BatchResponseOrder(**order) for order in result["orders"]]
+        if len(orders) < 1:
+            raise RuntimeError(
+                f"Received empty response to batch order request {request_data=}"
+            )
+        parent_order: BatchResponseOrder = orders[0]
+        return (parent_order.nonce, parent_order.orderId)
 
     def update_order(
         self,
@@ -1307,12 +1319,7 @@ class HibachiApiClient:
         result = self.__send_authorized_request(
             "POST", f"/trade/orders", json=request_data
         )
-        allowed_keys = BatchResponseOrder.__dataclass_fields__.keys()
-        orders = [
-            BatchResponseOrder(**{k: v for k, v in order.items() if k in allowed_keys})
-            for order in result["orders"]
-        ]
-
+        orders = [BatchResponseOrder(**order) for order in result["orders"]]
         result["orders"] = orders
         return BatchResponse(**result)
 
@@ -1430,6 +1437,9 @@ class HibachiApiClient:
         price: Optional[float],
         creation_deadline: Optional[int],
         twap_config: Optional[TWAPConfig] = None,
+        parent_order: Optional[OrderIdVariant] = None,
+        order_flags: Optional[OrderFlags] = None,
+        trigger_direction: Optional[TriggerDirection] = None,
     ) -> Dict[str, Any]:
         self.__check_auth_data()
         self.__check_symbol(symbol)
@@ -1458,11 +1468,17 @@ class HibachiApiClient:
             request["price"] = str(price)
         if trigger_price is not None:
             request["triggerPrice"] = str(trigger_price)
+            if trigger_direction is not None:
+                request["triggerDirection"] = trigger_direction.value
         if twap_config is not None:
             request = request | twap_config.to_dict()
         if creation_deadline is not None:
             deadline = floor(time()) + creation_deadline
             request["creationDeadline"] = deadline
+        if parent_order is not None:
+            request["parentOrder"] = parent_order.to_dict()
+        if order_flags is not None:
+            request["orderFlags"] = order_flags.value
 
         return request
 
@@ -1477,6 +1493,7 @@ class HibachiApiClient:
         price: Optional[float],
         trigger_price: Optional[float],
         creation_deadline: Optional[int],
+        order_flags: Optional[OrderFlags] = None,
     ) -> Dict[str, Any]:
         contract = self.future_contracts.get(symbol)
         payload = self.__create_or_update_order_payload(
@@ -1501,6 +1518,8 @@ class HibachiApiClient:
         if creation_deadline is not None:
             deadline = floor(time()) + creation_deadline
             request["creationDeadline"] = deadline
+        if order_flags is not None:
+            request["orderFlags"] = order_flags.value
         return request
 
     def __cancel_order_payload(
@@ -1538,6 +1557,9 @@ class HibachiApiClient:
                 o.price,
                 o.creation_deadline,
                 twap_config=o.twap_config,
+                order_flags=o.order_flags,
+                parent_order=o.parent_order,
+                trigger_direction=o.trigger_direction,
             )
         elif type(o) is UpdateOrder:
             payload = self.__update_order_request_data(
@@ -1550,6 +1572,7 @@ class HibachiApiClient:
                 o.price,
                 o.trigger_price,
                 o.creation_deadline,
+                order_flags=o.order_flags,
             )
         else:
             payload = self._cancel_order_request_data(o.order_id, o.nonce, True)

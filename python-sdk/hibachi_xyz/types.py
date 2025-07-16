@@ -1,8 +1,8 @@
+from typing import List, Self, Tuple, Optional, Dict, Any, TypedDict, Union, TypeAlias
+from decimal import Decimal
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, TypeAlias, TypedDict, Union
 
 
 class Interval(Enum):
@@ -17,6 +17,31 @@ class Interval(Enum):
 
 Nonce: TypeAlias = int
 OrderId: TypeAlias = int
+
+
+@dataclass
+class OrderIdVariant:
+    nonce: Optional[Nonce]
+    order_id: Optional[OrderId]
+
+    @classmethod
+    def from_nonce(cls, nonce: Nonce) -> Self:
+        if nonce is None:
+            raise ValueError("nonce cannot be None")
+        return cls(nonce=nonce, order_id=None)
+
+    @classmethod
+    def from_order_id(cls, order_id: OrderId) -> Self:
+        if order_id is None:
+            raise ValueError("order_id cannot be None")
+        return cls(nonce=None, order_id=order_id)
+
+    def to_dict(self) -> Dict[str, Any]:
+        if self.nonce is not None:
+            return {"nonce": str(self.nonce)}
+        elif self.order_id is not None:
+            return {"orderId": str(self.order_id)}
+        raise ValueError("Empty OrderIdVariant: no nonce or order_id set")
 
 
 class HibachiApiError(Exception):
@@ -48,10 +73,82 @@ class TWAPConfig:
         }
 
 
+class TPSLConfig:
+    class Type(Enum):
+        TP = "TP"
+        SL = "SL"
+
+    @dataclass
+    class Leg:
+        order_type: "TPSLConfig.Type"
+        price: float
+        quantity: Optional[float]
+
+    def __init__(self):
+        self.legs: List[TPSLConfig.Leg] = []
+
+    def add_take_profit(self, price: float, quantity: Optional[float] = None) -> Self:
+        self.legs.append(
+            TPSLConfig.Leg(
+                order_type=TPSLConfig.Type.TP,
+                price=price,
+                quantity=quantity,
+            )
+        )
+        return self
+
+    def add_stop_loss(self, price: float, quantity: Optional[float] = None) -> Self:
+        self.legs.append(
+            TPSLConfig.Leg(
+                order_type=TPSLConfig.Type.SL,
+                price=price,
+                quantity=quantity,
+            )
+        )
+        return self
+
+    def _as_requests(
+        self,
+        *,
+        parent_symbol: str,
+        parent_quantity: float,
+        parent_side: "Side",
+        parent_nonce: Nonce,
+        max_fees_percent: float,
+    ) -> List["CreateOrder"]:
+        order_requests = []
+        for leg in self.legs:
+            side = Side.BID if parent_side == Side.ASK else Side.ASK
+            trigger_direction = TriggerDirection.HIGH
+            if (leg.order_type == TPSLConfig.Type.TP and parent_side == Side.ASK) or (
+                leg.order_type == TPSLConfig.Type.SL and parent_side == Side.BID
+            ):
+                trigger_direction = TriggerDirection.LOW
+
+            order_requests.append(
+                CreateOrder(
+                    symbol=parent_symbol,
+                    side=side,
+                    quantity=leg.quantity or parent_quantity,
+                    max_fees_percent=max_fees_percent,
+                    trigger_price=leg.price,
+                    trigger_direction=trigger_direction,
+                    parent_order=OrderIdVariant.from_nonce(parent_nonce),
+                    order_flags=OrderFlags.ReduceOnly,
+                )
+            )
+        return order_requests
+
+
 class OrderType(Enum):
     LIMIT = "LIMIT"
     MARKET = "MARKET"
     # SCHEDULED_TWAP = "SCHEDULED_TWAP"
+
+
+class TriggerDirection(Enum):
+    HIGH = "HIGH"
+    LOW = "LOW"
 
 
 class Side(Enum):
@@ -154,6 +251,7 @@ class FutureContract:
     maintenanceFactorForPositions: str
     marketCloseTimestamp: Optional[str]
     marketOpenTimestamp: Optional[str]
+    marketCreationTimestamp: Optional[str]
     minNotional: str
     minOrderSize: str
     orderbookGranularities: List[str]
@@ -373,7 +471,7 @@ class Transaction:
     assetId: int
     quantity: str
     status: str
-    timestamp: int
+    timestampSec: int
     transactionType: str
     transactionHash: Optional[Union[str, str]]
     token: Optional[str]
@@ -395,7 +493,7 @@ class Transaction:
         assetId: int,
         quantity: str,
         status: str,
-        timestamp: int,
+        timestampSec: int,
         transactionType: str,
         transactionHash: Optional[Union[str, str]] = None,
         token: Optional[str] = None,
@@ -415,7 +513,7 @@ class Transaction:
         self.assetId = assetId
         self.quantity = quantity
         self.status = status
-        self.timestamp = timestamp
+        self.timestampSec = timestampSec
         self.transactionType = transactionType
         self.transactionHash = transactionHash
         self.token = token
@@ -614,6 +712,7 @@ class OrderPlaceParams:
     maxFeesPercent: float
     orderFlags: Optional[str] = None
     creation_deadline: Optional[int] = None
+    trigger_direction: Optional[TriggerDirection] = (None,)
 
 
 @dataclass
@@ -758,3 +857,101 @@ class InventoryResponse:
     feeConfig: FeeConfig
     markets: List[Market]
     tradingTiers: List[TradingTier]
+
+
+class CreateOrder:
+    action: str = "place"
+    symbol: str
+    side: Side
+    quantity: float
+    max_fees_percent: float
+    price: Optional[float]
+    trigger_price: Optional[float]
+    trigger_direction: Optional[TriggerDirection]
+    twap_config: Optional[TWAPConfig]
+    creation_deadline: Optional[float]
+    parent_order: Optional[OrderIdVariant]
+    order_flags: Optional[OrderFlags]
+
+    def __init__(
+        self,
+        symbol: str,
+        side: Side,
+        quantity: float,
+        max_fees_percent: float,
+        price: Optional[float] = None,
+        trigger_price: Optional[float] = None,
+        twap_config: Optional[TWAPConfig] = None,
+        creation_deadline: Optional[float] = None,
+        parent_order: Optional[OrderIdVariant] = None,
+        order_flags: Optional[OrderFlags] = None,
+        trigger_direction: Optional[TriggerDirection] = None,
+    ):
+        if side == Side.BUY:
+            side = Side.BID
+        elif side == Side.SELL:
+            side = Side.ASK
+
+        self.symbol = symbol
+        self.side = side
+        self.quantity = quantity
+        self.max_fees_percent = max_fees_percent
+        self.price = price
+        self.trigger_price = trigger_price
+        self.trigger_price = trigger_price
+        self.twap_config = twap_config
+        self.creation_deadline = creation_deadline
+        self.parent_order = parent_order
+        self.order_flags = order_flags
+        self.trigger_direction = trigger_direction
+
+
+class UpdateOrder:
+    action: str = "modify"
+    order_id: int
+    # needed for creating the signature
+    symbol: str
+    # needed for creating the signature
+    side: Side
+    quantity: float
+    max_fees_percent: float
+    price: Optional[float]
+    trigger_price: Optional[float]
+    parent_order: Optional[OrderIdVariant]
+
+    def __init__(
+        self,
+        order_id: int,
+        symbol: str,
+        side: Side,
+        quantity: float,
+        max_fees_percent: float,
+        price: Optional[float] = None,
+        trigger_price: Optional[float] = None,
+        creation_deadline: Optional[float] = None,
+        parent_order: Optional[OrderIdVariant] = None,
+    ):
+        if side == Side.BUY:
+            side = Side.BID
+        elif side == Side.SELL:
+            side = Side.ASK
+
+        self.order_id = order_id
+        self.symbol = symbol
+        self.side = side
+        self.quantity = quantity
+        self.max_fees_percent = max_fees_percent
+        self.price = price
+        self.trigger_price = trigger_price
+        self.creation_deadline = creation_deadline
+        self.parent_order = parent_order
+
+
+class CancelOrder:
+    action: str = "cancel"
+    order_id: Optional[int]
+    nonce: Optional[int]
+
+    def __init__(self, order_id: Optional[int] = None, nonce: Optional[int] = None):
+        self.order_id = order_id
+        self.nonce = nonce
