@@ -10,22 +10,34 @@ from hibachi_xyz.api_ws_market import HibachiWSMarketClient
 from hibachi_xyz.api_ws_trade import HibachiWSTradeClient
 from hibachi_xyz.env_setup import setup_environment
 from hibachi_xyz.helpers import print_data
-from hibachi_xyz.types import (AccountSnapshot, Nonce, OrderModifyParams,
-                               OrderPlaceParams, OrderPlaceResponse,
-                               OrderStatus, OrderType, Position, Side,
-                               WebSocketBatchOrder, WebSocketOrderCancelParams,
-                               WebSocketOrderModifyParams,
-                               WebSocketOrdersBatchParams,
-                               WebSocketOrdersCancelParams,
-                               WebSocketOrdersStatusParams,
-                               WebSocketOrderStatusParams,
-                               WebSocketStreamPingParams,
-                               WebSocketStreamStartParams,
-                               WebSocketStreamStopParams,
-                               WebSocketSubscription,
-                               WebSocketSubscriptionTopic)
+from hibachi_xyz.types import (
+    AccountSnapshot,
+    Nonce,
+    OrderModifyParams,
+    OrderPlaceParams,
+    OrderPlaceResponse,
+    OrderStatus,
+    OrderType,
+    Position,
+    Side,
+    WebSocketBatchOrder,
+    WebSocketOrderCancelParams,
+    WebSocketOrderModifyParams,
+    WebSocketOrdersBatchParams,
+    WebSocketOrdersCancelParams,
+    WebSocketOrdersStatusParams,
+    WebSocketOrderStatusParams,
+    WebSocketStreamPingParams,
+    WebSocketStreamStartParams,
+    WebSocketStreamStopParams,
+    WebSocketSubscription,
+    WebSocketSubscriptionTopic,
+)
 
-api_endpoint, data_api_endpoint, api_key, account_id, private_key, public_key, _ = setup_environment()
+api_endpoint, data_api_endpoint, api_key, account_id, private_key, public_key, _ = (
+    setup_environment()
+)
+
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(15)
@@ -57,21 +69,20 @@ async def test_market_websocket():
 
     finally:
         await client.disconnect()
-        
-                                          
+
+
 @pytest.mark.asyncio
 async def test_trade_websocket():
     client = HibachiWSTradeClient(
-        api_url=api_endpoint, 
+        api_url=api_endpoint,
         data_api_url=data_api_endpoint,
-        api_key=api_key, 
-        account_id=account_id, 
+        api_key=api_key,
+        account_id=account_id,
         account_public_key=public_key,
-        private_key=private_key
+        private_key=private_key,
     )
-    try: 
-        
-        await client.connect()    
+    try:
+        await client.connect()
 
         client.api.cancel_all_orders()
 
@@ -96,13 +107,13 @@ async def test_trade_websocket():
         start_order_count = len(client.api.get_pending_orders().orders)
 
         (nonce, order_id) = client.api.place_limit_order(
-            symbol="BTC/USDT-P", 
-            quantity=0.0001, 
-            side=Side.ASK, 
-            max_fees_percent=0.005, 
-            price=float(current_price.askPrice) *1.05
+            symbol="BTC/USDT-P",
+            quantity=0.0001,
+            side=Side.ASK,
+            max_fees_percent=0.005,
+            price=float(current_price.askPrice) * 1.05,
         )
-        
+
         # websocket orders status
         orders_start = await client.get_orders_status()
 
@@ -116,37 +127,38 @@ async def test_trade_websocket():
 
         result_of_cancel_all_orders = await client.cancel_all_orders()
 
-
         assert len(client.api.get_pending_orders().orders) == 0
 
         # all orders cleared again...
 
         price_before = float(current_price.askPrice) * 0.9
         # place an order using websocket
-        (nonce, order_id) = await client.place_order(OrderPlaceParams(
-            symbol="BTC/USDT-P",
-            quantity=0.0001,
-            side=Side.BID,
-            maxFeesPercent=0.0005,
-            orderType=OrderType.LIMIT,
-            price=price_before,
-            orderFlags=None,
-            trigger_price=None,
-            twap_config=None
-        ))
+        (nonce, order_id) = await client.place_order(
+            OrderPlaceParams(
+                symbol="BTC/USDT-P",
+                quantity=0.0001,
+                side=Side.BID,
+                maxFeesPercent=0.0005,
+                orderType=OrderType.LIMIT,
+                price=price_before,
+                orderFlags=None,
+                trigger_price=None,
+                twap_config=None,
+            )
+        )
 
         assert nonce is not None
         assert order_id is not None
 
         assert isinstance(nonce, Nonce)
-        assert isinstance(order_id , int)
+        assert isinstance(order_id, int)
 
         print(f"place new order nonce: {nonce} order_id: {order_id}")
 
         order = await client.get_order_status(order_id)
 
         assert order.result.orderId
-        
+
         price_after = float(current_price.askPrice) * 0.91
 
         # ---- test using rest
@@ -163,11 +175,11 @@ async def test_trade_websocket():
         # todo: ENG-4232/websocket-trade-ordermodify-not-finding-order-to-modify
         modify_result = await client.modify_order(
             order=order.result,
-            quantity=0.0001, 
+            quantity=0.0001,
             price=price_after,
             side=order.result.side,
-            maxFeesPercent=0.0005,   
-            nonce=nonce+1
+            maxFeesPercent=0.0005,
+            nonce=nonce + 1,
         )
 
         assert modify_result.get("status") == 200
@@ -202,7 +214,6 @@ async def test_trade_websocket():
             except asyncio.CancelledError:
                 print(f"Task {task} was cancelled as expected.")
 
-    
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(15)
@@ -211,9 +222,7 @@ async def test_account_websocket():
     ws_endpoint = api_endpoint.replace("https://", "wss://")
 
     client = HibachiWSAccountClient(
-        api_endpoint=ws_endpoint,
-        api_key=api_key,
-        account_id=account_id
+        api_endpoint=ws_endpoint, api_key=api_key, account_id=account_id
     )
 
     try:
@@ -221,7 +230,9 @@ async def test_account_websocket():
         result = await client.stream_start()
 
         assert isinstance(result.listenKey, str), "listenKey should be a string"
-        assert isinstance(result.accountSnapshot, AccountSnapshot), "accountSnapshot missing"
+        assert isinstance(
+            result.accountSnapshot, AccountSnapshot
+        ), "accountSnapshot missing"
         assert isinstance(result.accountSnapshot.positions, list)
         assert result.accountSnapshot.positions, "No positions returned"
 

@@ -9,27 +9,50 @@ from typing import Any, Callable, Dict, List, Optional
 import websockets
 from eth_keys import keys
 from hibachi_xyz.api import HibachiApiClient
-from hibachi_xyz.helpers import (connect_with_retry, default_api_url,
-                                 default_data_api_url, print_data)
+from hibachi_xyz.helpers import (
+    connect_with_retry,
+    default_api_url,
+    default_data_api_url,
+    print_data,
+)
 
-from .types import (AccountInfo, AccountTradesResponse, CapitalBalance,
-                    CapitalHistory, DepositInfo,
-                    EnableCancelOnDisconnectParams, Nonce, Order,
-                    OrderCancelParams, OrderModifyParams, OrderPlaceParams,
-                    OrderPlaceResponse, OrderPlaceResponseResult,
-                    OrderResponse, OrdersBatchParams, OrdersCancelParams,
-                    OrdersStatusParams, OrdersStatusResponse,
-                    OrderStatusParams, OrderStatusResponse,
-                    PendingOrdersResponse, SettlementsResponse, Side,
-                    WebSocketMarketSubscriptionListResponse, WebSocketResponse,
-                    WebSocketSubscription, WebSocketSubscriptionTopic,
-                    WithdrawRequest, WithdrawResponse)
+from .types import (
+    AccountInfo,
+    AccountTradesResponse,
+    CapitalBalance,
+    CapitalHistory,
+    DepositInfo,
+    EnableCancelOnDisconnectParams,
+    Nonce,
+    Order,
+    OrderCancelParams,
+    OrderModifyParams,
+    OrderPlaceParams,
+    OrderPlaceResponse,
+    OrderPlaceResponseResult,
+    OrderResponse,
+    OrdersBatchParams,
+    OrdersCancelParams,
+    OrdersStatusParams,
+    OrdersStatusResponse,
+    OrderStatusParams,
+    OrderStatusResponse,
+    PendingOrdersResponse,
+    SettlementsResponse,
+    Side,
+    WebSocketMarketSubscriptionListResponse,
+    WebSocketResponse,
+    WebSocketSubscription,
+    WebSocketSubscriptionTopic,
+    WithdrawRequest,
+    WithdrawResponse,
+)
 
 
-class HibachiWSTradeClient:  
+class HibachiWSTradeClient:
     """
     Trade Websocket Client is used to place, modify and cancel orders.
-    
+
     ```python
     import asyncio
     import os
@@ -45,13 +68,13 @@ class HibachiWSTradeClient:
 
     async def main():
         client = HibachiWSTradeClient(
-            api_key=api_key, 
-            account_id=account_id, 
+            api_key=api_key,
+            account_id=account_id,
             account_public_key=public_key,
             private_key=private_key
         )
 
-        await client.connect()    
+        await client.connect()
         orders = await client.get_orders_status()
         first_order = orders.result[0]
 
@@ -62,7 +85,7 @@ class HibachiWSTradeClient:
         # client.api.set_private_key(private_key)
         modify_result = await client.modify_order(
             order=order.result,
-            quantity=float("0.002"), 
+            quantity=float("0.002"),
             price=str(float("93500.0")),
             side=order.result.side,
             maxFeesPercent=float("0.00045"),
@@ -74,16 +97,20 @@ class HibachiWSTradeClient:
     ```
 
     """
-    def __init__(self,                  
-                 api_key: str,                  
-                 account_id: int, 
-                 account_public_key: str,
-                 api_url: str = default_api_url, 
-                 data_api_url: str = default_data_api_url,
-                 private_key: Optional[str] = None,                 
-                ):
+
+    def __init__(
+        self,
+        api_key: str,
+        account_id: int,
+        account_public_key: str,
+        api_url: str = default_api_url,
+        data_api_url: str = default_data_api_url,
+        private_key: Optional[str] = None,
+    ):
         self.api_endpoint = api_url
-        self.api_endpoint = self.api_endpoint.replace("https://", "wss://") + "/ws/trade"
+        self.api_endpoint = (
+            self.api_endpoint.replace("https://", "wss://") + "/ws/trade"
+        )
         self.websocket = None
 
         # random id start
@@ -94,23 +121,24 @@ class HibachiWSTradeClient:
         self.account_id = int(account_id) if isinstance(account_id, str) else account_id
         self.account_public_key = account_public_key
 
-        self.api = HibachiApiClient(api_url=api_url, 
-                                    data_api_url=data_api_url, 
-                                    account_id=account_id, 
-                                    api_key=api_key,
-                                    private_key=private_key
-                                    )
+        self.api = HibachiApiClient(
+            api_url=api_url,
+            data_api_url=data_api_url,
+            account_id=account_id,
+            api_key=api_key,
+            private_key=private_key,
+        )
 
     async def connect(self):
         """Establish WebSocket connection with retry logic"""
         self.websocket = await connect_with_retry(
-            web_url=self.api_endpoint + f"?accountId={self.account_id}", 
-            headers=[("Authorization", self.api_key)]
+            web_url=self.api_endpoint + f"?accountId={self.account_id}",
+            headers=[("Authorization", self.api_key)],
         )
 
         return self
 
-    async def place_order(self, params: OrderPlaceParams) -> tuple[Nonce,int]:
+    async def place_order(self, params: OrderPlaceParams) -> tuple[Nonce, int]:
         """Place a new order"""
         self.message_id += 1
 
@@ -122,15 +150,16 @@ class HibachiWSTradeClient:
             side = Side.ASK
 
         prepare_packet = self.api._create_order_request_data(
-            nonce=nonce, 
-            symbol=params.symbol, 
-            quantity=params.quantity, 
-            side=side, 
-            max_fees_percent=params.maxFeesPercent, 
-            trigger_price=params.trigger_price, 
-            price=params.price, 
-            creation_deadline=params.creation_deadline, 
-            twap_config=params.twap_config)
+            nonce=nonce,
+            symbol=params.symbol,
+            quantity=params.quantity,
+            side=side,
+            max_fees_percent=params.maxFeesPercent,
+            trigger_price=params.trigger_price,
+            price=params.price,
+            creation_deadline=params.creation_deadline,
+            twap_config=params.twap_config,
+        )
 
         prepare_packet["accountId"] = self.account_id
 
@@ -138,9 +167,8 @@ class HibachiWSTradeClient:
             "id": self.message_id,
             "method": "order.place",
             "params": prepare_packet,
-            "signature": prepare_packet.get("signature")
+            "signature": prepare_packet.get("signature"),
         }
-
 
         await self.websocket.send(json.dumps(message))
         response = await self.websocket.recv()
@@ -153,7 +181,7 @@ class HibachiWSTradeClient:
         # nonce: Nonce = prepare_packet.get("nonce")
         return (nonce, int(response_data.get("result").get("orderId")))
 
-    async def cancel_order(self, orderId: int, nonce:int) -> WebSocketResponse:
+    async def cancel_order(self, orderId: int, nonce: int) -> WebSocketResponse:
         """Cancel an existing order"""
         self.message_id += 1
 
@@ -170,7 +198,7 @@ class HibachiWSTradeClient:
                 "accountId": str(self.account_id),
                 # "nonce": str(nonce)
             },
-            "signature": prepare_packet.get("signature")
+            "signature": prepare_packet.get("signature"),
         }
         await self.websocket.send(json.dumps(message))
         response = await self.websocket.recv()
@@ -181,27 +209,30 @@ class HibachiWSTradeClient:
         # return WebSocketResponse(**response_data)
         return response_data
 
-    async def modify_order(self,
-            order: Order,
-            quantity: float,
-            price: str,
-            side: websockets.Side,
-            maxFeesPercent: float,
-            nonce: Optional[Nonce] = None
-        ) -> WebSocketResponse:
+    async def modify_order(
+        self,
+        order: Order,
+        quantity: float,
+        price: str,
+        side: websockets.Side,
+        maxFeesPercent: float,
+        nonce: Optional[Nonce] = None,
+    ) -> WebSocketResponse:
         """Modify an existing order"""
         self.message_id += 1
-        
+
         prepare_packet = self.api._update_order_generate_sig(
-            order, 
-            side=side, 
-            max_fees_percent=maxFeesPercent, 
-            quantity=quantity, 
+            order,
+            side=side,
+            max_fees_percent=maxFeesPercent,
+            quantity=quantity,
             price=float(price),
-            trigger_price=float(order.triggerPrice) if isinstance(order.triggerPrice, str) else order.triggerPrice,
-            nonce=nonce
-            )
-        
+            trigger_price=float(order.triggerPrice)
+            if isinstance(order.triggerPrice, str)
+            else order.triggerPrice,
+            nonce=nonce,
+        )
+
         signature = prepare_packet.get("signature")
         del prepare_packet["signature"]
 
@@ -209,18 +240,18 @@ class HibachiWSTradeClient:
             "id": self.message_id,
             "method": "order.modify",
             "params": prepare_packet,
-            "signature": signature
+            "signature": signature,
         }
-
-        
 
         await self.websocket.send(json.dumps(message))
         response = await self.websocket.recv()
-        response_data = json.loads(response)       
+        response_data = json.loads(response)
 
         if "error" in response_data and response_data["error"]:
-            raise Exception(f"Error modifying order: {response_data["error"]["message"]}")
-        
+            raise Exception(
+                f"Error modifying order: {response_data["error"]["message"]}"
+            )
+
         return response_data
         # return WebSocketResponse(**response_data)
 
@@ -230,10 +261,7 @@ class HibachiWSTradeClient:
         message = {
             "id": self.message_id,
             "method": "order.status",
-            "params": {
-                "orderId" : str(orderId),
-                "accountId" : int(self.account_id)
-            }
+            "params": {"orderId": str(orderId), "accountId": int(self.account_id)},
         }
 
         await self.websocket.send(json.dumps(message))
@@ -252,9 +280,7 @@ class HibachiWSTradeClient:
         message = {
             "id": self.message_id,
             "method": "orders.status",
-            "params": {
-                "accountId" : int(self.account_id)
-            }
+            "params": {"accountId": int(self.account_id)},
         }
 
         await self.websocket.send(json.dumps(message))
@@ -262,7 +288,6 @@ class HibachiWSTradeClient:
         response_data = json.loads(response)
         response_data["result"] = [Order(**order) for order in response_data["result"]]
         return OrdersStatusResponse(**response_data)
-        
 
     async def cancel_all_orders(self) -> bool:
         """Cancel all orders"""
@@ -279,8 +304,8 @@ class HibachiWSTradeClient:
                 "accountId": self.account_id,
                 "nonce": nonce,
                 # "contractId": 2 # TODO: get contract id
-            }, 
-            "signature": signed_packet.get("signature")
+            },
+            "signature": signed_packet.get("signature"),
         }
         await self.websocket.send(json.dumps(message))
         response = await self.websocket.recv()
@@ -299,20 +324,22 @@ class HibachiWSTradeClient:
         message = {
             "id": self.message_id,
             "method": "orders.batch",
-            "params": asdict(params)
+            "params": asdict(params),
         }
         await self.websocket.send(json.dumps(message))
         response = await self.websocket.recv()
         response_data = json.loads(response)
         return WebSocketResponse(**response_data)
 
-    async def enable_cancel_on_disconnect(self, params: EnableCancelOnDisconnectParams) -> WebSocketResponse:
+    async def enable_cancel_on_disconnect(
+        self, params: EnableCancelOnDisconnectParams
+    ) -> WebSocketResponse:
         """Enable automatic order cancellation on WebSocket disconnect"""
         self.message_id += 1
         message = {
             "id": self.message_id,
             "method": "orders.enableCancelOnDisconnect",
-            "params": asdict(params)
+            "params": asdict(params),
         }
         await self.websocket.send(json.dumps(message))
         response = await self.websocket.recv()
@@ -324,4 +351,3 @@ class HibachiWSTradeClient:
         if self.websocket:
             await self.websocket.close()
             self.websocket = None
-

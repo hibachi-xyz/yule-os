@@ -12,9 +12,11 @@ from examples.example_ws_trade import example_ws_trade
 async def test_example_public_api():
     example_public_api()
 
+
 @pytest.mark.asyncio
 async def test_example_auth_rest_api():
     example_auth_rest_api()
+
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(10)
@@ -22,10 +24,12 @@ async def test_example_ws_market():
     msgs = await example_ws_market(max_messages=3)
     assert msgs
 
+
 @pytest.mark.asyncio
 async def test_example_ws_account():
     msgs = await example_ws_account(max_messages=3)
     assert msgs
+
 
 @pytest.mark.asyncio
 async def test_example_ws_trade():

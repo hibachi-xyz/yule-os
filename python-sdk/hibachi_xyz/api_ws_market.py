@@ -27,13 +27,9 @@ class HibachiWSMarketClient:
             "method": "subscribe",
             "parameters": {
                 "subscriptions": [
-                    {
-                        **asdict(sub),
-                        "topic": sub.topic.value
-                    }
-                    for sub in subscriptions
+                    {**asdict(sub), "topic": sub.topic.value} for sub in subscriptions
                 ]
-            }
+            },
         }
         await self.websocket.send(json.dumps(message))
 
@@ -42,13 +38,9 @@ class HibachiWSMarketClient:
             "method": "unsubscribe",
             "parameters": {
                 "subscriptions": [
-                    {
-                        **asdict(sub),
-                        "topic": sub.topic.value
-                    }
-                    for sub in subscriptions
+                    {**asdict(sub), "topic": sub.topic.value} for sub in subscriptions
                 ]
-            }
+            },
         }
         await self.websocket.send(json.dumps(message))
 
@@ -73,7 +65,7 @@ class HibachiWSMarketClient:
             print("[MarketClient] WebSocket closed.")
         except Exception as e:
             print(f"[MarketClient] Receive loop error: {e}")
-            
+
     async def disconnect(self):
         if self._receive_task:
             self._receive_task.cancel()

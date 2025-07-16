@@ -2,8 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import (Any, Dict, List, Optional, Tuple, TypeAlias, TypedDict,
-                    Union)
+from typing import Any, Dict, List, Optional, Tuple, TypeAlias, TypedDict, Union
 
 
 class Interval(Enum):
@@ -15,8 +14,10 @@ class Interval(Enum):
     ONE_DAY = "1d"
     ONE_WEEK = "1w"
 
+
 Nonce: TypeAlias = int
 OrderId: TypeAlias = int
+
 
 class HibachiApiError(Exception):
     status_code: int
@@ -26,9 +27,11 @@ class HibachiApiError(Exception):
         self.status_code = status_code
         self.message = message
 
+
 class TWAPQuantityMode(Enum):
     FIXED = "FIXED"
     RANDOM = "RANDOM"
+
 
 class TWAPConfig:
     duration_minutes: int
@@ -41,19 +44,22 @@ class TWAPConfig:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "twapDurationMinutes": self.duration_minutes,
-            "twapQuantityMode": self.quantity_mode.value
+            "twapQuantityMode": self.quantity_mode.value,
         }
+
 
 class OrderType(Enum):
     LIMIT = "LIMIT"
     MARKET = "MARKET"
     # SCHEDULED_TWAP = "SCHEDULED_TWAP"
 
+
 class Side(Enum):
     BID = "BID"
     ASK = "ASK"
     SELL = "SELL"
     BUY = "BUY"
+
 
 class OrderStatus(Enum):
     PENDING = "PENDING"
@@ -64,10 +70,12 @@ class OrderStatus(Enum):
     PLACED = "PLACED"
     PARTIALLY_FILLED = "PARTIALLY_FILLED"
 
+
 class OrderFlags(Enum):
     PostOnly = "POST_ONLY"
     Ioc = "IOC"
     ReduceOnly = "REDUCE_ONLY"
+
 
 @dataclass
 class Order:
@@ -89,24 +97,26 @@ class Order:
     totalQuantity: Optional[str]
     triggerPrice: Optional[str]
 
-    def __init__(self, 
-                 accountId: int, 
-                 availableQuantity: str, 
-                 orderId: str,
-                 orderType: str, 
-                 side: str, 
-                 status: str,
-                 symbol: str,  
-                 numOrdersRemaining: Optional[int] = None,
-                 numOrdersTotal: Optional[int] = None, 
-                 quantityMode: Optional[str] = None,
-                 finishTime: Optional[int] = None,
-                 price: Optional[str] = None, 
-                 totalQuantity: Optional[str] = None,
-                 creationTime: Optional[int] = None,
-                 contractId: Optional[int] = None,
-                 orderFlags: Optional[str] = None,
-                 triggerPrice: Optional[str] = None):
+    def __init__(
+        self,
+        accountId: int,
+        availableQuantity: str,
+        orderId: str,
+        orderType: str,
+        side: str,
+        status: str,
+        symbol: str,
+        numOrdersRemaining: Optional[int] = None,
+        numOrdersTotal: Optional[int] = None,
+        quantityMode: Optional[str] = None,
+        finishTime: Optional[int] = None,
+        price: Optional[str] = None,
+        totalQuantity: Optional[str] = None,
+        creationTime: Optional[int] = None,
+        contractId: Optional[int] = None,
+        orderFlags: Optional[str] = None,
+        triggerPrice: Optional[str] = None,
+    ):
         self.accountId = accountId
         self.availableQuantity = availableQuantity
         self.contractId = contractId
@@ -126,7 +136,6 @@ class Order:
         self.orderFlags = OrderFlags(orderFlags) if orderFlags else None
 
 
-
 @dataclass
 class FeeConfig:
     depositFees: str
@@ -136,6 +145,7 @@ class FeeConfig:
     tradeTakerFeeRate: str
     transferFeeRate: str
     withdrawalFees: str
+
 
 @dataclass
 class FutureContract:
@@ -158,16 +168,19 @@ class FutureContract:
     underlyingDecimals: int
     underlyingSymbol: str
 
+
 @dataclass
 class WithdrawalLimit:
     lowerLimit: str
     upperLimit: str
+
 
 @dataclass
 class MaintenanceWindow:
     begin: float
     end: float
     note: str
+
 
 @dataclass
 class ExchangeInfo:
@@ -177,6 +190,7 @@ class ExchangeInfo:
     maintenanceWindow: List[MaintenanceWindow]
     # can be NORMAL, MAINTENANCE
     status: str
+
 
 @dataclass
 class FundingRateEstimation:
@@ -199,10 +213,10 @@ class PriceResponse:
 class BatchResponseOrder:
     nonce: Optional[Nonce]
     orderId: Optional[OrderId]
-    
-    def __init__(self, 
-                 nonce: Optional[Nonce] = None, 
-                 orderId: Optional[OrderId] = None):
+
+    def __init__(
+        self, nonce: Optional[Nonce] = None, orderId: Optional[OrderId] = None
+    ):
         self.nonce = int(nonce) if isinstance(nonce, str) else nonce
         self.orderId = int(orderId) if isinstance(orderId, str) else orderId
 
@@ -211,6 +225,7 @@ class BatchResponseOrder:
 class BatchResponse:
     orders: List[BatchResponseOrder]
 
+
 @dataclass
 class StatsResponse:
     high24h: str
@@ -218,9 +233,11 @@ class StatsResponse:
     symbol: str
     volume24h: str
 
+
 class TakerSide(Enum):
     Buy = "Buy"
     Sell = "Sell"
+
 
 @dataclass
 class Trade:
@@ -229,9 +246,11 @@ class Trade:
     takerSide: TakerSide
     timestamp: int
 
+
 @dataclass
 class TradesResponse:
     trades: List[Trade]
+
 
 @dataclass
 class Kline:
@@ -243,28 +262,34 @@ class Kline:
     timestamp: int
     volumeNotional: str
 
+
 @dataclass
 class KlinesResponse:
     klines: List[Kline]
 
+
 @dataclass
 class OpenInterestResponse:
     totalQuantity: str
+
 
 @dataclass
 class OrderBookLevel:
     price: str
     quantity: str
 
+
 @dataclass
 class OrderBook:
     ask: List[OrderBookLevel]
     bid: List[OrderBookLevel]
 
+
 @dataclass
 class Asset:
     quantity: str
     symbol: str
+
 
 @dataclass
 class Position:
@@ -277,6 +302,7 @@ class Position:
     symbol: str
     unrealizedFundingPnl: str
     unrealizedTradingPnl: str
+
 
 @dataclass
 class AccountInfo:
@@ -292,6 +318,7 @@ class AccountInfo:
     totalUnrealizedTradingPnl: str
     tradeMakerFeeRate: str
     tradeTakerFeeRate: str
+
 
 @dataclass
 class AccountTrade:
@@ -309,9 +336,11 @@ class AccountTrade:
     symbol: str
     timestamp: int
 
+
 @dataclass
 class AccountTradesResponse:
     trades: List[AccountTrade]
+
 
 @dataclass
 class Settlement:
@@ -322,20 +351,21 @@ class Settlement:
     symbol: str
     timestamp: int
 
+
 @dataclass
 class SettlementsResponse:
     settlements: List[Settlement]
-
-
 
 
 @dataclass
 class PendingOrdersResponse:
     orders: List[Order]
 
+
 @dataclass
 class CapitalBalance:
     balance: str
+
 
 @dataclass
 class Transaction:
@@ -345,7 +375,7 @@ class Transaction:
     status: str
     timestamp: int
     transactionType: str
-    transactionHash: Optional[Union[str,str]]
+    transactionHash: Optional[Union[str, str]]
     token: Optional[str]
     etaTsSec: Optional[int]
     blockNumber: Optional[int]
@@ -359,26 +389,28 @@ class Transaction:
     srcAccountId: Optional[int]
     srcAddress: Optional[str]
 
-    def __init__(self, 
-                    id: int,
-                    assetId: int,
-                    quantity: str,
-                    status: str,
-                    timestamp: int,
-                    transactionType: str,
-                    transactionHash: Optional[Union[str,str]] = None,
-                    token: Optional[str] = None,
-                    etaTsSec: Optional[int] = None,
-                    blockNumber: Optional[int] = None,
-                    chain: Optional[str] = None,
-                    instantWithdrawalChain: Optional[str] = None,
-                    instantWithdrawalToken: Optional[str] = None,
-                    isInstantWithdrawal: Optional[bool] = None,
-                    withdrawalAddress: Optional[str] = None,
-                    receivingAddress: Optional[str] = None,
-                    receivingAccountId: Optional[int] = None,
-                    srcAccountId: Optional[int] = None,
-                    srcAddress: Optional[str] = None):
+    def __init__(
+        self,
+        id: int,
+        assetId: int,
+        quantity: str,
+        status: str,
+        timestamp: int,
+        transactionType: str,
+        transactionHash: Optional[Union[str, str]] = None,
+        token: Optional[str] = None,
+        etaTsSec: Optional[int] = None,
+        blockNumber: Optional[int] = None,
+        chain: Optional[str] = None,
+        instantWithdrawalChain: Optional[str] = None,
+        instantWithdrawalToken: Optional[str] = None,
+        isInstantWithdrawal: Optional[bool] = None,
+        withdrawalAddress: Optional[str] = None,
+        receivingAddress: Optional[str] = None,
+        receivingAccountId: Optional[int] = None,
+        srcAccountId: Optional[int] = None,
+        srcAddress: Optional[str] = None,
+    ):
         self.id = id
         self.assetId = assetId
         self.quantity = quantity
@@ -398,9 +430,12 @@ class Transaction:
         self.receivingAccountId = receivingAccountId
         self.srcAccountId = srcAccountId
         self.srcAddress = srcAddress
+
+
 @dataclass
 class CapitalHistory:
     transactions: List[Transaction]
+
 
 @dataclass
 class WithdrawRequest:
@@ -412,9 +447,11 @@ class WithdrawRequest:
     maxFees: str
     signature: str
 
+
 @dataclass
 class WithdrawResponse:
     orderId: str
+
 
 @dataclass
 class TransferRequest:
@@ -426,13 +463,16 @@ class TransferRequest:
     dstPublicKey: str
     signature: str
 
+
 @dataclass
 class TransferResponse:
     status: str
 
+
 @dataclass
 class DepositInfo:
     depositAddressEvm: str
+
 
 class WebSocketSubscriptionTopic(Enum):
     MARK_PRICE = "mark_price"
@@ -441,19 +481,22 @@ class WebSocketSubscriptionTopic(Enum):
     TRADES = "trades"
     KLINES = "klines"
     ORDERBOOK = "orderbook"
-    ASK_BID_PRICE ="ask_bid_price"
-    
+    ASK_BID_PRICE = "ask_bid_price"
+
 
 @dataclass
 class WebSocketSubscription:
     symbol: str
     topic: WebSocketSubscriptionTopic
 
+
 @dataclass
 class WebSocketMarketSubscriptionListResponse:
     subscriptions: List[WebSocketSubscription]
 
-#AUTOGEN BELOW
+
+# AUTOGEN BELOW
+
 
 @dataclass
 class WebSocketResponse:
@@ -462,17 +505,20 @@ class WebSocketResponse:
     status: Optional[int]
     subscriptions: Optional[List[WebSocketSubscription]]
 
+
 @dataclass
 class WebSocketEvent:
     account: str
     event: str
     data: Dict[str, Any]
 
+
 @dataclass
 class WebSocketOrderCancelParams:
     orderId: str
     accountId: str
     nonce: int
+
 
 @dataclass
 class WebSocketOrderModifyParams:
@@ -483,20 +529,24 @@ class WebSocketOrderModifyParams:
     price: str
     maxFeesPercent: str
 
+
 @dataclass
 class WebSocketOrderStatusParams:
     orderId: str
     accountId: str
 
+
 @dataclass
 class WebSocketOrdersStatusParams:
     accountId: str
+
 
 @dataclass
 class WebSocketOrdersCancelParams:
     accountId: str
     nonce: str
     contractId: Optional[int] = None
+
 
 @dataclass
 class WebSocketBatchOrder:
@@ -513,14 +563,17 @@ class WebSocketBatchOrder:
     updatedQuantity: Optional[str] = None
     updatedPrice: Optional[str] = None
 
+
 @dataclass
 class WebSocketOrdersBatchParams:
     accountId: str
     orders: List[WebSocketBatchOrder]
 
+
 @dataclass
 class WebSocketStreamStartParams:
     accountId: str
+
 
 @dataclass
 class WebSocketStreamPingParams:
@@ -528,11 +581,13 @@ class WebSocketStreamPingParams:
     listenKey: str
     timestamp: int
 
+
 @dataclass
 class WebSocketStreamStopParams:
     accountId: str
     listenKey: str
     timestamp: int
+
 
 @dataclass
 class AccountSnapshot:
@@ -540,11 +595,11 @@ class AccountSnapshot:
     balance: str
     positions: List[Position]
 
+
 @dataclass
 class AccountStreamStartResult:
     accountSnapshot: AccountSnapshot
     listenKey: str
-
 
 
 @dataclass
@@ -560,11 +615,13 @@ class OrderPlaceParams:
     orderFlags: Optional[str] = None
     creation_deadline: Optional[int] = None
 
+
 @dataclass
 class OrderCancelParams:
     orderId: str
     accountId: str
     nonce: int
+
 
 @dataclass
 class OrderModifyParams:
@@ -577,20 +634,24 @@ class OrderModifyParams:
     maxFeesPercent: str
     nonce: Optional[int]
 
+
 @dataclass
 class OrderStatusParams:
     orderId: str
     accountId: str
 
+
 @dataclass
 class OrdersStatusParams:
     accountId: int
+
 
 @dataclass
 class OrdersCancelParams:
     accountId: str
     nonce: str
     contractId: Optional[int] = None
+
 
 @dataclass
 class BatchOrder:
@@ -607,14 +668,17 @@ class BatchOrder:
     updatedPrice: Optional[str] = None
     signature: Optional[str] = None
 
+
 @dataclass
 class OrdersBatchParams:
     accountId: str
     orders: List[BatchOrder]
 
+
 @dataclass
 class EnableCancelOnDisconnectParams:
     nonce: int
+
 
 @dataclass
 class OrderResponse:
@@ -633,11 +697,13 @@ class OrderResponse:
 class OrderPlaceResponseResult:
     orderId: str
 
+
 @dataclass
 class OrderPlaceResponse:
-    id:int
+    id: int
     result: OrderPlaceResponseResult
     status: int
+
 
 @dataclass
 class OrdersStatusResponse:
@@ -645,12 +711,12 @@ class OrdersStatusResponse:
     result: List[Order]
     status: Optional[int]
 
+
 @dataclass
 class OrderStatusResponse:
     id: int
     result: Order
     status: Optional[int]
-
 
 
 @dataclass
@@ -663,14 +729,12 @@ class CrossChainAsset:
     token: str
 
 
-
 @dataclass
 class TradingTier:
     level: int
     lowerThreshold: str
     title: str
     upperThreshold: str
-
 
 
 @dataclass
@@ -681,10 +745,12 @@ class MarketInfo:
     priceLatest: str
     tags: List[str]
 
-@dataclass 
+
+@dataclass
 class Market:
     contract: FutureContract
     info: MarketInfo
+
 
 @dataclass
 class InventoryResponse:
