@@ -1,6 +1,6 @@
 from typing import List, Self, Tuple, Optional, Dict, Any, TypedDict, Union, TypeAlias
 from decimal import Decimal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
@@ -160,6 +160,7 @@ class Side(Enum):
 
 class OrderStatus(Enum):
     PENDING = "PENDING"
+    CHILD_PENDING = "CHILD_PENDING"
     FILLED = "FILLED"
     CANCELLED = "CANCELLED"
     REJECTED = "REJECTED"
@@ -249,9 +250,6 @@ class FutureContract:
     displayName: str
     id: int
     maintenanceFactorForPositions: str
-    marketCloseTimestamp: Optional[str]
-    marketOpenTimestamp: Optional[str]
-    marketCreationTimestamp: Optional[str]
     minNotional: str
     minOrderSize: str
     orderbookGranularities: List[str]
@@ -265,6 +263,9 @@ class FutureContract:
     tickSize: str
     underlyingDecimals: int
     underlyingSymbol: str
+    marketCloseTimestamp: Optional[str] = field(default=None)
+    marketOpenTimestamp: Optional[str] = field(default=None)
+    marketCreationTimestamp: Optional[str] = field(default=None)
 
 
 @dataclass
@@ -918,6 +919,7 @@ class UpdateOrder:
     price: Optional[float]
     trigger_price: Optional[float]
     parent_order: Optional[OrderIdVariant]
+    order_flags: Optional[OrderFlags]
 
     def __init__(
         self,
@@ -930,6 +932,7 @@ class UpdateOrder:
         trigger_price: Optional[float] = None,
         creation_deadline: Optional[float] = None,
         parent_order: Optional[OrderIdVariant] = None,
+        order_flags: Optional[OrderFlags] = None,
     ):
         if side == Side.BUY:
             side = Side.BID
@@ -945,6 +948,7 @@ class UpdateOrder:
         self.trigger_price = trigger_price
         self.creation_deadline = creation_deadline
         self.parent_order = parent_order
+        self.order_flags = order_flags
 
 
 class CancelOrder:

@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, TypeVar, Union, Any, Callable
 
 from websockets import ClientConnection, HeadersLike
 import websockets
@@ -7,9 +7,21 @@ from hibachi_xyz.types import ExchangeInfo, FutureContract, MaintenanceWindow
 from datetime import datetime
 from prettyprinter import cpprint
 from dataclasses import asdict, dataclass
+import inspect
 
 default_api_url = "https://api.hibachi.xyz"
 default_data_api_url = "https://data-api.hibachi.xyz"
+
+# allow an object to be created from any superset of the required args
+# intending to future proof against updates adding fields
+T = TypeVar("T")
+
+
+def create_with(func: Callable[..., T], data: Dict[str, Any]) -> T:
+    sig = inspect.signature(func)
+    valid_keys = sig.parameters.keys()
+    filtered_data = {k: v for k, v in data.items() if k in valid_keys}
+    return func(**filtered_data)
 
 
 async def connect_with_retry(

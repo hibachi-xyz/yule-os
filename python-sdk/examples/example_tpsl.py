@@ -1,4 +1,3 @@
-import os
 from hibachi_xyz import (
     TPSLConfig,
     HibachiApiClient,

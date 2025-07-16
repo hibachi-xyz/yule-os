@@ -69,7 +69,7 @@ from hibachi_xyz.types import (
     CancelOrder,
 )
 
-from hibachi_xyz.helpers import print_data, default_api_url, default_data_api_url
+from hibachi_xyz.helpers import create_with, default_api_url, default_data_api_url
 
 
 def price_to_bytes(price: float, contract: FutureContract) -> bytes:
@@ -198,13 +198,16 @@ class HibachiApiClient:
 
         self.future_contracts = {}
         for contract in exchange_info["futureContracts"]:
-            self.future_contracts[contract["symbol"]] = FutureContract(**contract)
+            self.future_contracts[contract["symbol"]] = create_with(
+                FutureContract, contract
+            )
 
         fee_config = FeeConfig(**exchange_info["feeConfig"])
 
         # Parse future contracts
         future_contracts = [
-            FutureContract(**contract) for contract in exchange_info["futureContracts"]
+            create_with(FutureContract, contract)
+            for contract in exchange_info["futureContracts"]
         ]
 
         # Parse withdrawal limit
@@ -212,7 +215,8 @@ class HibachiApiClient:
 
         # Parse maintenance windows
         maintenance_windows = [
-            MaintenanceWindow(**window) for window in exchange_info["maintenanceWindow"]
+            create_with(MaintenanceWindow, window)
+            for window in exchange_info["maintenanceWindow"]
         ]
 
         # Create exchange info object
@@ -224,7 +228,7 @@ class HibachiApiClient:
             status=exchange_info["status"],
         )
 
-        # exchange_info_types = ExchangeInfo(**exchange_info)
+        # exchange_info_types = create_with(ExchangeInfo, exchange_info)
 
         # return exchange_info_types
 
@@ -306,11 +310,14 @@ class HibachiApiClient:
 
         output = InventoryResponse(
             crossChainAssets=[
-                CrossChainAsset(**cca) for cca in market_inventory["crossChainAssets"]
+                create_with(CrossChainAsset, cca)
+                for cca in market_inventory["crossChainAssets"]
             ],
             feeConfig=FeeConfig(**market_inventory["feeConfig"]),
             markets=markets,
-            tradingTiers=[TradingTier(**tt) for tt in market_inventory["tradingTiers"]],
+            tradingTiers=[
+                create_with(TradingTier, tt) for tt in market_inventory["tradingTiers"]
+            ],
         )
 
         return output
@@ -320,7 +327,7 @@ class HibachiApiClient:
         response["fundingRateEstimation"] = FundingRateEstimation(
             **response["fundingRateEstimation"]
         )
-        return PriceResponse(**response)
+        return create_with(PriceResponse, response)
 
     def get_stats(self, symbol: str) -> StatsResponse:
         return StatsResponse(
@@ -345,7 +352,9 @@ class HibachiApiClient:
         response = self.__send_simple_request(
             f"/market/data/klines?symbol={symbol}&interval={interval.value}"
         )
-        return KlinesResponse(klines=[Kline(**kline) for kline in response["klines"]])
+        return KlinesResponse(
+            klines=[create_with(Kline, kline) for kline in response["klines"]]
+        )
 
     def get_open_interest(self, symbol: str) -> OpenInterestResponse:
         """Get open interest for a symbol
@@ -363,7 +372,7 @@ class HibachiApiClient:
         response = self.__send_simple_request(
             f"/market/data/open-interest?symbol={symbol}"
         )
-        return OpenInterestResponse(**response)
+        return create_with(OpenInterestResponse, response)
 
     def get_orderbook(self, symbol: str, depth: int, granularity: float) -> OrderBook:
         """
@@ -450,7 +459,7 @@ class HibachiApiClient:
         response = self.__send_authorized_request(
             "GET", f"/capital/balance?accountId={self.account_id}"
         )
-        return CapitalBalance(**response)
+        return create_with(CapitalBalance, response)
 
     def get_capital_history(self) -> CapitalHistory:
         """
@@ -490,7 +499,9 @@ class HibachiApiClient:
         )
 
         return CapitalHistory(
-            transactions=[Transaction(**tx) for tx in response["transactions"]]
+            transactions=[
+                create_with(Transaction, tx) for tx in response["transactions"]
+            ]
         )
 
     def withdraw(
@@ -535,7 +546,7 @@ class HibachiApiClient:
         response = self.__send_authorized_request(
             "POST", "/capital/withdraw", json=asdict(request)
         )
-        return WithdrawResponse(**response)
+        return create_with(WithdrawResponse, response)
 
     def transfer(self, coin: str, quantity: str, dstPublicKey: str, max_fees: str):
         """
@@ -567,7 +578,7 @@ class HibachiApiClient:
             "POST", "/capital/transfer", json=asdict(request)
         )
 
-        return TransferResponse(**response)
+        return create_with(TransferResponse, response)
 
     def get_deposit_info(self, public_key: str) -> DepositInfo:
         """Get deposit address information.
@@ -589,7 +600,7 @@ class HibachiApiClient:
             "GET",
             f"/capital/deposit-info?accountId={self.account_id}&publicKey={public_key}",
         )
-        return DepositInfo(**response)
+        return create_with(DepositInfo, response)
 
     def __sign_withdraw_payload(
         self, coin: str, withdraw_address: str, quantity: str, max_fees: str
@@ -730,8 +741,10 @@ class HibachiApiClient:
             "GET", f"/trade/account/info?accountId={self.account_id}"
         )
 
-        assets = [Asset(**asset) for asset in response["assets"]]
-        positions = [Position(**position) for position in response["positions"]]
+        assets = [create_with(Asset, asset) for asset in response["assets"]]
+        positions = [
+            create_with(Position, position) for position in response["positions"]
+        ]
 
         return AccountInfo(
             assets=assets,
@@ -786,7 +799,7 @@ class HibachiApiClient:
         response = self.__send_authorized_request(
             "GET", f"/trade/account/trades?accountId={self.account_id}"
         )
-        trades = [AccountTrade(**trade) for trade in response["trades"]]
+        trades = [create_with(AccountTrade, trade) for trade in response["trades"]]
         return AccountTradesResponse(trades=trades)
 
     def get_settlements_history(self) -> SettlementsResponse:
@@ -820,7 +833,8 @@ class HibachiApiClient:
             "GET", f"/trade/account/settlements_history?accountId={self.account_id}"
         )
         settlements = [
-            Settlement(**settlement) for settlement in response["settlements"]
+            create_with(Settlement, settlement)
+            for settlement in response["settlements"]
         ]
         return SettlementsResponse(settlements=settlements)
 
@@ -863,7 +877,7 @@ class HibachiApiClient:
         response = self.__send_authorized_request(
             "GET", f"/trade/orders?accountId={self.account_id}"
         )
-        orders = [Order(**order_data) for order_data in response]
+        orders = [create_with(Order, order_data) for order_data in response]
         return PendingOrdersResponse(orders=orders)
 
     def get_order_details(
@@ -924,7 +938,7 @@ class HibachiApiClient:
         response["finishTime"] = response.get("finishTime")
         response["orderFlags"] = response.get("orderFlags")
 
-        return Order(**response)
+        return create_with(Order, response)
 
     # Order API endpoints require the private key to be set
 
@@ -1110,7 +1124,7 @@ class HibachiApiClient:
         result = self.__send_authorized_request(
             "POST", f"/trade/orders", json=request_data
         )
-        orders = [BatchResponseOrder(**order) for order in result["orders"]]
+        orders = [create_with(BatchResponseOrder, order) for order in result["orders"]]
         if len(orders) < 1:
             raise RuntimeError(
                 f"Received empty response to batch order request {request_data=}"
@@ -1319,9 +1333,9 @@ class HibachiApiClient:
         result = self.__send_authorized_request(
             "POST", f"/trade/orders", json=request_data
         )
-        orders = [BatchResponseOrder(**order) for order in result["orders"]]
+        orders = [create_with(BatchResponseOrder, order) for order in result["orders"]]
         result["orders"] = orders
-        return BatchResponse(**result)
+        return create_with(BatchResponse, result)
 
     """ Private helpers """
 

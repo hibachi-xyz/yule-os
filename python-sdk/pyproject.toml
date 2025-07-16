@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Hibachi SDK for accessing the API"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<4"
 license = "MIT" 
 dependencies = [
   "eth_keys == 0.6.1",
@@ -26,7 +26,14 @@ dependencies = [
 dev = [
   "pytest",
   "pytest-asyncio",
-  "pytest-timeout"
+  "pytest-timeout",
+]
+
+[tool.poetry.extras]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "pytest-timeout",
 ]
 
 [project.urls]
