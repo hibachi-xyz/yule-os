@@ -65,7 +65,8 @@ jobs:
           name: Patch version dynamically
           command: |
             VERSION_SUFFIX=$(date +%Y%m%d%H%M%S)
-            sed -i "s/^version = .*/version = \"0.0.1.dev$VERSION_SUFFIX\"/" python-sdk/pyproject.toml
+            # sed -i "s/^version = .*/version = \"0.0.1.dev$VERSION_SUFFIX\"/" python-sdk/pyproject.toml
+            sed -i "s/^version = .*/version = \"0.1.10\"/" python-sdk/pyproject.toml
             grep version python-sdk/pyproject.toml
       - run: pip install build twine
       - run:
