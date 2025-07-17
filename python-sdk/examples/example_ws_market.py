@@ -1,7 +1,11 @@
 import asyncio
 
-from hibachi_xyz import (HibachiWSMarketClient, WebSocketSubscription,
-                         WebSocketSubscriptionTopic, print_data)
+from hibachi_xyz import (
+    HibachiWSMarketClient,
+    WebSocketSubscription,
+    WebSocketSubscriptionTopic,
+    print_data,
+)
 
 
 async def example_ws_market(max_messages: int = None):
@@ -9,8 +13,12 @@ async def example_ws_market(max_messages: int = None):
     await client.connect()
 
     subscriptions = [
-        WebSocketSubscription(symbol="BTC/USDT-P", topic=WebSocketSubscriptionTopic.MARK_PRICE),
-        WebSocketSubscription(symbol="BTC/USDT-P", topic=WebSocketSubscriptionTopic.TRADES),
+        WebSocketSubscription(
+            symbol="BTC/USDT-P", topic=WebSocketSubscriptionTopic.MARK_PRICE
+        ),
+        WebSocketSubscription(
+            symbol="BTC/USDT-P", topic=WebSocketSubscriptionTopic.TRADES
+        ),
     ]
 
     # Async handlers for message topics

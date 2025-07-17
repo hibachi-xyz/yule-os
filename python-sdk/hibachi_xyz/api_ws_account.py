@@ -5,12 +5,13 @@ from typing import Callable, Dict, List, Optional
 
 import websockets
 from hibachi_xyz.helpers import connect_with_retry, default_api_url, print_data
-from hibachi_xyz.types import (AccountSnapshot, AccountStreamStartResult,
-                               Position)
+from hibachi_xyz.types import AccountSnapshot, AccountStreamStartResult, Position
 
 
 class HibachiWSAccountClient:
-    def __init__(self, api_key: str, account_id: str, api_endpoint: str = default_api_url):
+    def __init__(
+        self, api_key: str, account_id: str, api_endpoint: str = default_api_url
+    ):
         self.api_endpoint = api_endpoint.replace("https://", "wss://")
         self.websocket = None
         self.message_id = 0
@@ -23,11 +24,11 @@ class HibachiWSAccountClient:
         if topic not in self._event_handlers:
             self._event_handlers[topic] = []
         self._event_handlers[topic].append(handler)
-            
+
     async def connect(self):
         self.websocket = await connect_with_retry(
             web_url=self.api_endpoint + f"/ws/account?accountId={self.account_id}",
-            headers=[("Authorization", self.api_key)]
+            headers=[("Authorization", self.api_key)],
         )
 
     def _next_message_id(self) -> int:
@@ -41,10 +42,8 @@ class HibachiWSAccountClient:
         message = {
             "id": self._next_message_id(),
             "method": "stream.start",
-            "params": {
-                "accountId": self.account_id
-            },
-            "timestamp": self._timestamp()
+            "params": {"accountId": self.account_id},
+            "timestamp": self._timestamp(),
         }
 
         await self.websocket.send(json.dumps(message))
@@ -52,8 +51,12 @@ class HibachiWSAccountClient:
         response_data = json.loads(response)
 
         result = AccountStreamStartResult(**response_data["result"])
-        result.accountSnapshot = AccountSnapshot(**response_data["result"]["accountSnapshot"])
-        result.accountSnapshot.positions = [Position(**pos) for pos in result.accountSnapshot.positions]
+        result.accountSnapshot = AccountSnapshot(
+            **response_data["result"]["accountSnapshot"]
+        )
+        result.accountSnapshot.positions = [
+            Position(**pos) for pos in result.accountSnapshot.positions
+        ]
         self.listenKey = result.listenKey
         return result
 
@@ -64,11 +67,8 @@ class HibachiWSAccountClient:
         message = {
             "id": self._next_message_id(),
             "method": "stream.ping",
-            "params": {
-                "accountId": self.account_id,
-                "listenKey": self.listenKey
-            },
-            "timestamp": self._timestamp()
+            "params": {"accountId": self.account_id, "listenKey": self.listenKey},
+            "timestamp": self._timestamp(),
         }
 
         await self.websocket.send(json.dumps(message))

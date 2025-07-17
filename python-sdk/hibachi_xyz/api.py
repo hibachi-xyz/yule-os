@@ -1,113 +1,97 @@
-import hmac
-import json
 from dataclasses import asdict
 from enum import Enum
 from hashlib import sha256
+import hmac
+import json
 from math import floor
 from time import time, time_ns
-from typing import Any, Dict, List, Optional, Tuple, TypeAlias, Union
+from typing import Any, Dict, Optional, TypeAlias, List, Tuple, Union
 
-import requests
 from eth_keys import keys
-from hibachi_xyz.helpers import (default_api_url, default_data_api_url,
-                                 print_data)
-from hibachi_xyz.types import (AccountInfo, AccountTrade,
-                               AccountTradesResponse, Asset, BatchOrder,
-                               BatchResponse, BatchResponseOrder,
-                               CapitalBalance, CapitalHistory, CrossChainAsset,
-                               DepositInfo, ExchangeInfo, FeeConfig,
-                               FundingRateEstimation, FutureContract,
-                               HibachiApiError, Interval, InventoryResponse,
-                               Kline, KlinesResponse, MaintenanceWindow,
-                               Market, MarketInfo, Nonce, OpenInterestResponse,
-                               Order, OrderBook, OrderBookLevel, OrderId,
-                               PendingOrdersResponse, Position, PriceResponse,
-                               Settlement, SettlementsResponse, Side,
-                               StatsResponse, TakerSide, Trade, TradesResponse,
-                               TradingTier, Transaction, TransferRequest,
-                               TransferResponse, TWAPConfig, WithdrawalLimit,
-                               WithdrawRequest, WithdrawResponse)
+import requests
 
+from hibachi_xyz.types import (
+    BatchOrder,
+    BatchResponse,
+    BatchResponseOrder,
+    ExchangeInfo,
+    FeeConfig,
+    FutureContract,
+    MaintenanceWindow,
+    Order,
+    OrderIdVariant,
+    PendingOrdersResponse,
+    TriggerDirection,
+    WithdrawalLimit,
+    PriceResponse,
+    FundingRateEstimation,
+    StatsResponse,
+    TradesResponse,
+    Trade,
+    TakerSide,
+    KlinesResponse,
+    Kline,
+    OpenInterestResponse,
+    OrderBookLevel,
+    OrderBook,
+    AccountInfo,
+    Asset,
+    Position,
+    AccountTradesResponse,
+    AccountTrade,
+    SettlementsResponse,
+    Settlement,
+    Order,
+    CapitalBalance,
+    CapitalHistory,
+    Transaction,
+    WithdrawRequest,
+    WithdrawResponse,
+    DepositInfo,
+    Side,
+    InventoryResponse,
+    CrossChainAsset,
+    FeeConfig,
+    Market,
+    TradingTier,
+    MarketInfo,
+    TransferRequest,
+    TransferResponse,
+    TWAPConfig,
+    TPSLConfig,
+    HibachiApiError,
+    Interval,
+    Nonce,
+    OrderId,
+    OrderFlags,
+    CreateOrder,
+    UpdateOrder,
+    CancelOrder,
+)
 
-class CreateOrder:
-    action: str = "place"
-    symbol: str
-    side: Side
-    quantity: float
-    max_fees_percent: float
-    price: Optional[float]
-    trigger_price: Optional[float]
-    twap_config: Optional[float]
-    creation_deadline: Optional[float]
-
-    def __init__(self, symbol: str, side: Side, quantity: float, max_fees_percent: float, price: Optional[float] = None, trigger_price: Optional[float] = None, twap_config: Optional[TWAPConfig] = None, creation_deadline: Optional[float] = None):
-
-        if side == Side.BUY:
-            side = Side.BID
-        elif side == Side.SELL:
-            side = Side.ASK
-
-        self.symbol = symbol
-        self.side = side
-        self.quantity = quantity
-        self.max_fees_percent = max_fees_percent
-        self.price = price
-        self.trigger_price = trigger_price
-        self.twap_config = twap_config
-        self.creation_deadline = creation_deadline
-
-class UpdateOrder:
-    action: str = "modify"
-    order_id: int
-    # needed for creating the signature
-    symbol: str
-    # needed for creating the signature
-    side: Side
-    quantity: float
-    max_fees_percent: float
-    price: Optional[float]
-    trigger_price: Optional[float]
-
-    def __init__(self, order_id: int, symbol: str, side: Side, quantity: float, max_fees_percent: float, price: Optional[float] = None, trigger_price: Optional[float] = None, creation_deadline: Optional[float] = None):
-
-        if side == Side.BUY:
-            side = Side.BID
-        elif side == Side.SELL:
-            side = Side.ASK
-
-        self.order_id = order_id
-        self.symbol = symbol
-        self.side = side
-        self.quantity = quantity
-        self.max_fees_percent = max_fees_percent
-        self.price = price
-        self.trigger_price = trigger_price
-        self.creation_deadline = creation_deadline
-
-class CancelOrder:
-    action: str = "cancel"
-    order_id: Optional[int]
-    nonce: Optional[int]
-
-    def __init__(self, order_id: Optional[int] = None, nonce: Optional[int] = None):
-        self.order_id = order_id
-        self.nonce = nonce
+from hibachi_xyz.helpers import create_with, default_api_url, default_data_api_url
 
 
 def price_to_bytes(price: float, contract: FutureContract) -> bytes:
-    return int(price * pow(2, 32) * pow(10, contract.settlementDecimals - contract.underlyingDecimals)).to_bytes(8, 'big')
+    return int(
+        price
+        * pow(2, 32)
+        * pow(10, contract.settlementDecimals - contract.underlyingDecimals)
+    ).to_bytes(8, "big")
+
 
 def _get_http_error(response: requests.Response) -> Optional[HibachiApiError]:
-    """ Check if the response is an error and return an exception if it is
-        The builtin response.raise_for_status() does not show the server's response
+    """Check if the response is an error and return an exception if it is
+    The builtin response.raise_for_status() does not show the server's response
     """
 
     if response.status_code > 299:
         return HibachiApiError(response.status_code, response.text)
     return None
 
+
 class HibachiApiClient:
-    """ 
+    """
     Example usage:
     ```python
     from hibachi_xyz import HibachiApiClient
@@ -127,33 +111,41 @@ class HibachiApiClient:
     exchange_info = api.get_exchange_info()
     print(exchange_info)
     ```
-    
+
     Args:
         api_url: The base URL of the API
         data_api_url: The base URL of the data API
         account_id: The account ID
         api_key: The API key
         private_key: The private key for the account
-    
+
     """
+
     api_url: str
     data_api_url: str
     account_id: Optional[int] = None
     api_key: Optional[str] = None
 
-    _private_key: Optional[keys.PrivateKey] = None # ECDSA for wallet account
-    _private_key_hmac: Optional[str] = None # HMAC for web account
+    _private_key: Optional[keys.PrivateKey] = None  # ECDSA for wallet account
+    _private_key_hmac: Optional[str] = None  # HMAC for web account
 
     future_contracts: Optional[Dict[str, FutureContract]] = None
 
-    def __init__(self, api_url: str = default_api_url, data_api_url: str = default_data_api_url, 
-            account_id: Optional[int] = None, 
-            api_key: Optional[str] = None, 
-            private_key: Optional[str] = None
-            ):
+    def __init__(
+        self,
+        api_url: str = default_api_url,
+        data_api_url: str = default_data_api_url,
+        account_id: Optional[int] = None,
+        api_key: Optional[str] = None,
+        private_key: Optional[str] = None,
+    ):
         self.api_url = api_url
         self.data_api_url = data_api_url
-        self.account_id = int(account_id) if isinstance(account_id, str) and account_id.isdigit() else account_id
+        self.account_id = (
+            int(account_id)
+            if isinstance(account_id, str) and account_id.isdigit()
+            else account_id
+        )
         self.api_key = api_key
         if private_key is not None:
             self.set_private_key(private_key)
@@ -165,15 +157,13 @@ class HibachiApiClient:
         self.api_key = api_key
 
     def set_private_key(self, private_key: str):
-        if private_key.startswith('0x'):
+        if private_key.startswith("0x"):
             private_key = private_key[2:]
             private_key_bytes = bytes.fromhex(private_key)
             self._private_key = keys.PrivateKey(private_key_bytes)
 
-        if private_key.startswith('0x') == False:
+        if private_key.startswith("0x") == False:
             self._private_key_hmac = private_key
-        
-            
 
     """ Market API endpoints, can be called without having an account """
 
@@ -208,36 +198,43 @@ class HibachiApiClient:
 
         self.future_contracts = {}
         for contract in exchange_info["futureContracts"]:
-            self.future_contracts[contract["symbol"]] = FutureContract(**contract)
-
+            self.future_contracts[contract["symbol"]] = create_with(
+                FutureContract, contract
+            )
 
         fee_config = FeeConfig(**exchange_info["feeConfig"])
-    
+
         # Parse future contracts
-        future_contracts = [FutureContract(**contract) for contract in exchange_info["futureContracts"]]
-        
+        future_contracts = [
+            create_with(FutureContract, contract)
+            for contract in exchange_info["futureContracts"]
+        ]
+
         # Parse withdrawal limit
         withdrawal_limit = WithdrawalLimit(**exchange_info["instantWithdrawalLimit"])
-        
+
         # Parse maintenance windows
-        maintenance_windows = [MaintenanceWindow(**window) for window in exchange_info["maintenanceWindow"]]
-        
+        maintenance_windows = [
+            create_with(MaintenanceWindow, window)
+            for window in exchange_info["maintenanceWindow"]
+        ]
+
         # Create exchange info object
         return ExchangeInfo(
             feeConfig=fee_config,
             futureContracts=future_contracts,
             instantWithdrawalLimit=withdrawal_limit,
             maintenanceWindow=maintenance_windows,
-            status=exchange_info["status"]
+            status=exchange_info["status"],
         )
 
-        # exchange_info_types = ExchangeInfo(**exchange_info)
+        # exchange_info_types = create_with(ExchangeInfo, exchange_info)
 
         # return exchange_info_types
 
     def get_inventory(self) -> InventoryResponse:
         """
-        Similar to /market/exchange-info, in addition to the contract metadata we will return their latest price info.       
+        Similar to /market/exchange-info, in addition to the contract metadata we will return their latest price info.
 
         Return type:
         ```python
@@ -304,58 +301,78 @@ class HibachiApiClient:
             contract = FutureContract(**market["contract"])
             self.future_contracts[contract.symbol] = contract
 
-        markets = [Market(contract=FutureContract(**m["contract"]), info=MarketInfo(**m["info"])) for m in market_inventory["markets"]]
-                                                  
+        markets = [
+            Market(
+                contract=FutureContract(**m["contract"]), info=MarketInfo(**m["info"])
+            )
+            for m in market_inventory["markets"]
+        ]
 
         output = InventoryResponse(
-            crossChainAssets=[CrossChainAsset(**cca) for cca in market_inventory["crossChainAssets"]],
+            crossChainAssets=[
+                create_with(CrossChainAsset, cca)
+                for cca in market_inventory["crossChainAssets"]
+            ],
             feeConfig=FeeConfig(**market_inventory["feeConfig"]),
             markets=markets,
-            tradingTiers=[TradingTier(**tt) for tt in market_inventory["tradingTiers"]]
+            tradingTiers=[
+                create_with(TradingTier, tt) for tt in market_inventory["tradingTiers"]
+            ],
         )
 
         return output
 
     def get_prices(self, symbol: str) -> PriceResponse:
         response = self.__send_simple_request(f"/market/data/prices?symbol={symbol}")
-        response['fundingRateEstimation'] = FundingRateEstimation(**response['fundingRateEstimation'])
-        return PriceResponse(**response)
+        response["fundingRateEstimation"] = FundingRateEstimation(
+            **response["fundingRateEstimation"]
+        )
+        return create_with(PriceResponse, response)
 
     def get_stats(self, symbol: str) -> StatsResponse:
-        return StatsResponse(**self.__send_simple_request(f"/market/data/stats?symbol={symbol}"))
+        return StatsResponse(
+            **self.__send_simple_request(f"/market/data/stats?symbol={symbol}")
+        )
 
     def get_trades(self, symbol: str) -> TradesResponse:
         response = self.__send_simple_request(f"/market/data/trades?symbol={symbol}")
         return TradesResponse(
-            trades=[Trade(
-                price=t["price"],
-                quantity=t["quantity"],
-                takerSide=TakerSide(t["takerSide"]),
-                timestamp=t["timestamp"]
-            ) for t in response["trades"]]
+            trades=[
+                Trade(
+                    price=t["price"],
+                    quantity=t["quantity"],
+                    takerSide=TakerSide(t["takerSide"]),
+                    timestamp=t["timestamp"],
+                )
+                for t in response["trades"]
+            ]
         )
 
     def get_klines(self, symbol: str, interval: Interval) -> KlinesResponse:
-        response = self.__send_simple_request(f"/market/data/klines?symbol={symbol}&interval={interval.value}")
-        return KlinesResponse(
-            klines=[Kline(**kline) for kline in response["klines"]]
+        response = self.__send_simple_request(
+            f"/market/data/klines?symbol={symbol}&interval={interval.value}"
         )
-    
+        return KlinesResponse(
+            klines=[create_with(Kline, kline) for kline in response["klines"]]
+        )
+
     def get_open_interest(self, symbol: str) -> OpenInterestResponse:
         """Get open interest for a symbol
 
         Endpoint: `GET /market/data/open-interest`
-        
+
         Args:
             symbol: The trading symbol (e.g. "BTC/USDT-P")
-            
+
         Returns:
             OpenInterestResponse: The open interest data
-        
+
         -----------------------------------------------------------------------
         """
-        response = self.__send_simple_request(f"/market/data/open-interest?symbol={symbol}")
-        return OpenInterestResponse(**response) 
+        response = self.__send_simple_request(
+            f"/market/data/open-interest?symbol={symbol}"
+        )
+        return create_with(OpenInterestResponse, response)
 
     def get_orderbook(self, symbol: str, depth: int, granularity: float) -> OrderBook:
         """
@@ -388,29 +405,38 @@ class HibachiApiClient:
         depth = int(depth)
         if depth < 1 or depth > 100:
             raise ValueError(
-                "Depth must be a positive integer between 1 and 100, inclusive")
+                "Depth must be a positive integer between 1 and 100, inclusive"
+            )
 
         self.__check_symbol(symbol)
 
         contract = self.future_contracts.get(symbol)
-        granularities = contract.orderbookGranularities 
+        granularities = contract.orderbookGranularities
         if str(granularity) not in granularities:
             raise ValueError(
-                f"Granularity for symbol {symbol} must be one of {granularities}")
+                f"Granularity for symbol {symbol} must be one of {granularities}"
+            )
 
-        response = self.__send_simple_request(f"/market/data/orderbook?symbol={symbol}&depth={depth}&granularity={granularity}")
-        
-        ask_levels = [OrderBookLevel(price=level['price'], quantity=level['quantity']) for level in response['ask']['levels']]
-        bid_levels = [OrderBookLevel(price=level['price'], quantity=level['quantity']) for level in response['bid']['levels']]
-        
+        response = self.__send_simple_request(
+            f"/market/data/orderbook?symbol={symbol}&depth={depth}&granularity={granularity}"
+        )
+
+        ask_levels = [
+            OrderBookLevel(price=level["price"], quantity=level["quantity"])
+            for level in response["ask"]["levels"]
+        ]
+        bid_levels = [
+            OrderBookLevel(price=level["price"], quantity=level["quantity"])
+            for level in response["bid"]["levels"]
+        ]
+
         return OrderBook(ask=ask_levels, bid=bid_levels)
-    
-    ### ===================================================== Account API =====================================================
 
+    ### ===================================================== Account API =====================================================
 
     ### ------------------------------------------------ Account API - Capital ------------------------------------------------
 
-    def get_capital_balance(self) -> CapitalBalance: 
+    def get_capital_balance(self) -> CapitalBalance:
         """
         Get the balance of your account.
         The returned balance is your net equity which includes unrealized PnL.
@@ -420,24 +446,26 @@ class HibachiApiClient:
         ```python
         capital_balance = client.get_capital_balance()
         print(capital_balance.balance)
-        ```        
+        ```
 
-        ```      
+        ```
         CapitalBalance {
             balance: str
-        }        
+        }
         ```
         -----------------------------------------------------------------------
         """
         self.__check_auth_data()
-        response = self.__send_authorized_request('GET', f"/capital/balance?accountId={self.account_id}")        
-        return CapitalBalance(**response)
+        response = self.__send_authorized_request(
+            "GET", f"/capital/balance?accountId={self.account_id}"
+        )
+        return create_with(CapitalBalance, response)
 
     def get_capital_history(self) -> CapitalHistory:
         """
         Get the deposit and withdraw history of your account.
         It will return most recent up to 100 deposit and 100 withdraw.
-        
+
         Endpoint: `GET /capital/history`
 
         ```python
@@ -453,7 +481,7 @@ class HibachiApiClient:
             id: int
             quantity: str
             status: str
-            timestamp: int
+            timestampSec: int
             token: Optional[str]
             transactionHash: Union[str,str]
             transactionType: str
@@ -466,31 +494,42 @@ class HibachiApiClient:
         -----------------------------------------------------------------------
         """
         self.__check_auth_data()
-        response = self.__send_authorized_request('GET', f"/capital/history?accountId={self.account_id}")
-
-        return CapitalHistory(
-            transactions=[Transaction(**tx) for tx in response['transactions']]
+        response = self.__send_authorized_request(
+            "GET", f"/capital/history?accountId={self.account_id}"
         )
 
-    def withdraw(self, coin: str, withdraw_address: str, quantity: str, max_fees: str, network: str = "arbitrum") -> WithdrawResponse:
+        return CapitalHistory(
+            transactions=[
+                create_with(Transaction, tx) for tx in response["transactions"]
+            ]
+        )
+
+    def withdraw(
+        self,
+        coin: str,
+        withdraw_address: str,
+        quantity: str,
+        max_fees: str,
+        network: str = "arbitrum",
+    ) -> WithdrawResponse:
         """Submit a withdraw request.
 
         Endpoint: `POST /capital/withdraw`
-        
+
         Args:
             coin: The coin to withdraw (e.g. "USDT")
             withdraw_address: The address to withdraw to
             quantity: The amount to withdraw should be no more than maximalWithdraw returned by /trade/account/info endpoint, otherwise it will be rejected.
             max_fees: Maximum fees allowed for the withdrawal
             network: The network to withdraw on (default "arbitrum")
-            
+
         Returns:
             WithdrawResponse: The response containing the order ID
-        
+
         -----------------------------------------------------------------------
         """
         self.__check_auth_data()
-        
+
         # Create withdraw request payload
         request = WithdrawRequest(
             accountId=self.account_id,
@@ -499,13 +538,17 @@ class HibachiApiClient:
             network=network,
             quantity=quantity,
             maxFees=max_fees,
-            signature=self.__sign_withdraw_payload(coin, withdraw_address, quantity, max_fees)
+            signature=self.__sign_withdraw_payload(
+                coin, withdraw_address, quantity, max_fees
+            ),
         )
-        
-        response = self.__send_authorized_request('POST', "/capital/withdraw", json=asdict(request))
-        return WithdrawResponse(**response)
 
-    def transfer(self, coin:str, quantity:str, dstPublicKey:str, max_fees:str):
+        response = self.__send_authorized_request(
+            "POST", "/capital/withdraw", json=asdict(request)
+        )
+        return create_with(WithdrawResponse, response)
+
+    def transfer(self, coin: str, quantity: str, dstPublicKey: str, max_fees: str):
         """
         Request fund transfer to another account.
 
@@ -523,44 +566,53 @@ class HibachiApiClient:
             accountId=self.account_id,
             coin=coin,
             nonce=nonce,
-            dstPublicKey=dstPublicKey.replace('0x', ''),
+            dstPublicKey=dstPublicKey.replace("0x", ""),
             fees=max_fees,
             quantity=quantity,
-            signature=self.__sign_transfer_payload(nonce, coin, quantity, dstPublicKey, max_fees)
+            signature=self.__sign_transfer_payload(
+                nonce, coin, quantity, dstPublicKey, max_fees
+            ),
         )
 
-        response = self.__send_authorized_request('POST', "/capital/transfer", json=asdict(request))
+        response = self.__send_authorized_request(
+            "POST", "/capital/transfer", json=asdict(request)
+        )
 
-        return TransferResponse(**response)
+        return create_with(TransferResponse, response)
 
     def get_deposit_info(self, public_key: str) -> DepositInfo:
         """Get deposit address information.
 
         Endpoint: `GET /capital/deposit-info`
-        
+
         Args:
             public_key: The public key to get deposit info for
-            
+
         Returns:
             DepositInfo: The deposit address information
 
         ```python
         DepositInfo { depositAddressEvm: str }
-        ``` 
+        ```
         -----------------------------------------------------------------------
         """
-        response = self.__send_authorized_request('GET', f"/capital/deposit-info?accountId={self.account_id}&publicKey={public_key}")
-        return DepositInfo(**response)
+        response = self.__send_authorized_request(
+            "GET",
+            f"/capital/deposit-info?accountId={self.account_id}&publicKey={public_key}",
+        )
+        return create_with(DepositInfo, response)
 
-    def __sign_withdraw_payload(self, coin: str, withdraw_address: str, quantity: str, max_fees: str) -> str:
+    def __sign_withdraw_payload(
+        self, coin: str, withdraw_address: str, quantity: str, max_fees: str
+    ) -> str:
         """Sign a withdrawal request payload.
-        
+
         Args:
             coin: The coin to withdraw
             withdraw_address: The withdrawal address
             quantity: The withdrawal amount
             max_fees: Maximum fees allowed
-            
+
         Returns:
             str: The signature for the withdrawal request
         """
@@ -568,58 +620,74 @@ class HibachiApiClient:
         if self.future_contracts is None:
             self.get_exchange_info()
 
-           
         # Find asset ID for the coin
         asset_id = None
         for contract in self.future_contracts.values():
             if contract.settlementSymbol == coin:
                 asset_id = contract.id
                 break
-                
+
         if asset_id is None:
             raise ValueError(f"Unknown coin: {coin}")
 
         # Create payload bytes
-        asset_id_bytes = asset_id.to_bytes(4, 'big')
-        quantity_bytes = int(float(quantity) * 1e6).to_bytes(8, 'big')  # Assuming 6 decimals for USDT
-        max_fees_bytes = int(float(max_fees) * 1e6).to_bytes(8, 'big')  # Assuming 6 decimals for USDT
-        address_bytes = bytes.fromhex(withdraw_address.replace('0x', ''))
+        asset_id_bytes = asset_id.to_bytes(4, "big")
+        quantity_bytes = int(float(quantity) * 1e6).to_bytes(
+            8, "big"
+        )  # Assuming 6 decimals for USDT
+        max_fees_bytes = int(float(max_fees) * 1e6).to_bytes(
+            8, "big"
+        )  # Assuming 6 decimals for USDT
+        address_bytes = bytes.fromhex(withdraw_address.replace("0x", ""))
 
         # Combine payload
         payload = asset_id_bytes + quantity_bytes + max_fees_bytes + address_bytes
 
         # Sign payload
         return self.__sign_payload(payload)
-    
-    def __sign_transfer_payload(self, nonce: int, coin: str, quantity: int, dst_account_public_key:str, max_fees_percent: str) -> str:
+
+    def __sign_transfer_payload(
+        self,
+        nonce: int,
+        coin: str,
+        quantity: int,
+        dst_account_public_key: str,
+        max_fees_percent: str,
+    ) -> str:
         # Get asset ID from exchange info
         if self.future_contracts is None:
             self.get_exchange_info()
 
-           
         # Find asset ID for the coin
         asset_id = None
         for contract in self.future_contracts.values():
             if contract.settlementSymbol == coin:
                 asset_id = contract.id
                 break
-                
+
         if asset_id is None:
             raise ValueError(f"Unknown coin: {coin}")
 
         # Create payload bytes
-        nonce_bytes = nonce.to_bytes(8, 'big')
-        asset_id_bytes = asset_id.to_bytes(4, 'big')
-        quantity_bytes = int(float(quantity) * 1e6).to_bytes(8, 'big')  # Assuming 6 decimals for USDT
-        max_fees_bytes = int(float(max_fees_percent)).to_bytes(8, 'big')
-        address_bytes = bytes.fromhex(dst_account_public_key.replace('0x', ''))
+        nonce_bytes = nonce.to_bytes(8, "big")
+        asset_id_bytes = asset_id.to_bytes(4, "big")
+        quantity_bytes = int(float(quantity) * 1e6).to_bytes(
+            8, "big"
+        )  # Assuming 6 decimals for USDT
+        max_fees_bytes = int(float(max_fees_percent)).to_bytes(8, "big")
+        address_bytes = bytes.fromhex(dst_account_public_key.replace("0x", ""))
 
         # Combine payload
-        payload = nonce_bytes + asset_id_bytes + quantity_bytes + address_bytes + max_fees_bytes 
+        payload = (
+            nonce_bytes
+            + asset_id_bytes
+            + quantity_bytes
+            + address_bytes
+            + max_fees_bytes
+        )
 
         # Sign payload
-        return self.__sign_payload(payload)  
-  
+        return self.__sign_payload(payload)
 
     ############################################################################
     ## Trade API endpoints, account_id and api_key must be set
@@ -669,24 +737,28 @@ class HibachiApiClient:
         -----------------------------------------------------------------------
         """
         self.__check_auth_data()
-        response = self.__send_authorized_request('GET', f"/trade/account/info?accountId={self.account_id}")
-        
-        assets = [Asset(**asset) for asset in response['assets']]
-        positions = [Position(**position) for position in response['positions']]
-        
+        response = self.__send_authorized_request(
+            "GET", f"/trade/account/info?accountId={self.account_id}"
+        )
+
+        assets = [create_with(Asset, asset) for asset in response["assets"]]
+        positions = [
+            create_with(Position, position) for position in response["positions"]
+        ]
+
         return AccountInfo(
             assets=assets,
-            balance=response['balance'],
-            maximalWithdraw=response['maximalWithdraw'],
-            numFreeTransfersRemaining=response['numFreeTransfersRemaining'],
+            balance=response["balance"],
+            maximalWithdraw=response["maximalWithdraw"],
+            numFreeTransfersRemaining=response["numFreeTransfersRemaining"],
             positions=positions,
-            totalOrderNotional=response['totalOrderNotional'],
-            totalPositionNotional=response['totalPositionNotional'],
-            totalUnrealizedFundingPnl=response['totalUnrealizedFundingPnl'],
-            totalUnrealizedPnl=response['totalUnrealizedPnl'],
-            totalUnrealizedTradingPnl=response['totalUnrealizedTradingPnl'],
-            tradeMakerFeeRate=response['tradeMakerFeeRate'],
-            tradeTakerFeeRate=response['tradeTakerFeeRate']
+            totalOrderNotional=response["totalOrderNotional"],
+            totalPositionNotional=response["totalPositionNotional"],
+            totalUnrealizedFundingPnl=response["totalUnrealizedFundingPnl"],
+            totalUnrealizedPnl=response["totalUnrealizedPnl"],
+            totalUnrealizedTradingPnl=response["totalUnrealizedTradingPnl"],
+            tradeMakerFeeRate=response["tradeMakerFeeRate"],
+            tradeTakerFeeRate=response["tradeTakerFeeRate"],
         )
 
     def get_account_trades(self) -> AccountTradesResponse:
@@ -724,8 +796,10 @@ class HibachiApiClient:
         -----------------------------------------------------------------------
         """
         self.__check_auth_data()
-        response = self.__send_authorized_request('GET', f"/trade/account/trades?accountId={self.account_id}")
-        trades = [AccountTrade(**trade) for trade in response['trades']]
+        response = self.__send_authorized_request(
+            "GET", f"/trade/account/trades?accountId={self.account_id}"
+        )
+        trades = [create_with(AccountTrade, trade) for trade in response["trades"]]
         return AccountTradesResponse(trades=trades)
 
     def get_settlements_history(self) -> SettlementsResponse:
@@ -755,8 +829,13 @@ class HibachiApiClient:
         -----------------------------------------------------------------------
         """
         self.__check_auth_data()
-        response = self.__send_authorized_request('GET', f"/trade/account/settlements_history?accountId={self.account_id}")
-        settlements = [Settlement(**settlement) for settlement in response['settlements']]
+        response = self.__send_authorized_request(
+            "GET", f"/trade/account/settlements_history?accountId={self.account_id}"
+        )
+        settlements = [
+            create_with(Settlement, settlement)
+            for settlement in response["settlements"]
+        ]
         return SettlementsResponse(settlements=settlements)
 
     def get_pending_orders(self) -> PendingOrdersResponse:
@@ -790,16 +869,20 @@ class HibachiApiClient:
                 totalQuantity: Optional[str]
                 triggerPrice: Optional[str]
             }[]
-        }    
+        }
         ```
         -----------------------------------------------------------------------
         """
         self.__check_auth_data()
-        response = self.__send_authorized_request('GET', f"/trade/orders?accountId={self.account_id}")        
-        orders = [Order(**order_data) for order_data in response]
+        response = self.__send_authorized_request(
+            "GET", f"/trade/orders?accountId={self.account_id}"
+        )
+        orders = [create_with(Order, order_data) for order_data in response]
         return PendingOrdersResponse(orders=orders)
 
-    def get_order_details(self, order_id: Optional[int] = None, nonce: Optional[int] = None) -> Order:
+    def get_order_details(
+        self, order_id: Optional[int] = None, nonce: Optional[int] = None
+    ) -> Order:
         """
         Get order details
 
@@ -833,29 +916,44 @@ class HibachiApiClient:
             totalQuantity: Optional[str]
             triggerPrice: Optional[str]
         }
-        ```        
+        ```
         -----------------------------------------------------------------------
         """
         self.__check_order_selector(order_id, nonce)
         self.__check_auth_data()
 
-        order_selector = f"orderId={order_id}" if order_id is not None else f"nonce={nonce}"
-        response = self.__send_authorized_request('GET', f"/trade/order?accountId={self.account_id}&{order_selector}")
-        
-        response['numOrdersTotal'] = response.get('numOrdersTotal')
-        response['numOrdersRemaining'] = response.get('numOrdersRemaining')
-        response['totalQuantity'] = response.get('totalQuantity')
-        response['quantityMode'] = response.get('quantityMode')
-        response['price'] = response.get('price')
-        response['triggerPrice'] = response.get('triggerPrice')       
-        response['finishTime'] = response.get('finishTime')
-        response['orderFlags'] = response.get('orderFlags')
-        
-        return Order(**response)
+        order_selector = (
+            f"orderId={order_id}" if order_id is not None else f"nonce={nonce}"
+        )
+        response = self.__send_authorized_request(
+            "GET", f"/trade/order?accountId={self.account_id}&{order_selector}"
+        )
+
+        response["numOrdersTotal"] = response.get("numOrdersTotal")
+        response["numOrdersRemaining"] = response.get("numOrdersRemaining")
+        response["totalQuantity"] = response.get("totalQuantity")
+        response["quantityMode"] = response.get("quantityMode")
+        response["price"] = response.get("price")
+        response["triggerPrice"] = response.get("triggerPrice")
+        response["finishTime"] = response.get("finishTime")
+        response["orderFlags"] = response.get("orderFlags")
+
+        return create_with(Order, response)
 
     # Order API endpoints require the private key to be set
 
-    def place_market_order(self, symbol: str, quantity: float, side: Side, max_fees_percent: float, trigger_price: Optional[float] = None, twap_config: Optional[TWAPConfig] = None, creation_deadline: Optional[int] = None) -> tuple[Nonce, OrderId]:
+    def place_market_order(
+        self,
+        symbol: str,
+        quantity: float,
+        side: Side,
+        max_fees_percent: float,
+        trigger_price: Optional[float] = None,
+        twap_config: Optional[TWAPConfig] = None,
+        creation_deadline: Optional[int] = None,
+        order_flags: Optional[OrderFlags] = None,
+        tpsl: Optional[TPSLConfig] = None,
+    ) -> tuple[Nonce, OrderId]:
         """
         Place a market order
 
@@ -881,14 +979,54 @@ class HibachiApiClient:
         if twap_config is not None and trigger_price is not None:
             raise ValueError("Can not set trigger price for TWAP order")
 
+        if twap_config is not None and tpsl is not None:
+            raise ValueError("Can not set tpsl for TWAP order")
+
+        if tpsl is not None and len(tpsl.legs) > 0:
+            return self._place_parent_with_tpsl(
+                symbol=symbol,
+                price=None,
+                quantity=quantity,
+                side=side,
+                max_fees_percent=max_fees_percent,
+                trigger_price=trigger_price,
+                creation_deadline=creation_deadline,
+                order_flags=order_flags,
+                tpsl=tpsl,
+            )
+
         nonce = time_ns() // 1_000
-        request_data = self._create_order_request_data(nonce, symbol, quantity, side, max_fees_percent, trigger_price, None, creation_deadline, twap_config=twap_config)
+        request_data = self._create_order_request_data(
+            nonce,
+            symbol,
+            quantity,
+            side,
+            max_fees_percent,
+            trigger_price,
+            None,
+            creation_deadline,
+            twap_config=twap_config,
+            order_flags=order_flags,
+        )
         request_data["accountId"] = self.account_id
-        response = self.__send_authorized_request('POST', f"/trade/order", json=request_data)
-        order_id = int(response['orderId'])
+        response = self.__send_authorized_request(
+            "POST", f"/trade/order", json=request_data
+        )
+        order_id = int(response["orderId"])
         return (nonce, order_id)
 
-    def place_limit_order(self, symbol: str, quantity: float, price: float, side: Side, max_fees_percent: float, trigger_price: Optional[float] = None, creation_deadline: Optional[int] = None) -> tuple[Nonce, OrderId]:
+    def place_limit_order(
+        self,
+        symbol: str,
+        quantity: float,
+        price: float,
+        side: Side,
+        max_fees_percent: float,
+        trigger_price: Optional[float] = None,
+        creation_deadline: Optional[int] = None,
+        order_flags: Optional[OrderFlags] = None,
+        tpsl: Optional[TPSLConfig] = None,
+    ) -> tuple[Nonce, OrderId]:
         """
         Place a limit order
 
@@ -911,21 +1049,105 @@ class HibachiApiClient:
         elif side == Side.SELL:
             side = Side.ASK
 
+        if tpsl is not None and len(tpsl.legs) > 0:
+            return self._place_parent_with_tpsl(
+                symbol=symbol,
+                price=price,
+                quantity=quantity,
+                side=side,
+                max_fees_percent=max_fees_percent,
+                trigger_price=trigger_price,
+                creation_deadline=creation_deadline,
+                order_flags=order_flags,
+                tpsl=tpsl,
+            )
+
         nonce = time_ns() // 1_000
-        request_data = self._create_order_request_data(nonce, symbol, quantity, side, max_fees_percent, trigger_price, price, creation_deadline)
+        request_data = self._create_order_request_data(
+            nonce,
+            symbol,
+            quantity,
+            side,
+            max_fees_percent,
+            trigger_price,
+            price,
+            creation_deadline,
+            order_flags=order_flags,
+        )
         request_data["accountId"] = self.account_id
-        response = self.__send_authorized_request('POST', f"/trade/order", json=request_data)
-        order_id = int(response['orderId'])
+        response = self.__send_authorized_request(
+            "POST", f"/trade/order", json=request_data
+        )
+        order_id = int(response["orderId"])
         return (nonce, order_id)
 
-    def update_order(self, order_id: int, max_fees_percent: float, quantity: Optional[float] = None, price: Optional[float] = None, trigger_price: Optional[float] = None, creation_deadline: Optional[int] = None) -> Dict[str, Any]:
+    def _place_parent_with_tpsl(
+        self,
+        symbol: str,
+        quantity: float,
+        price: Optional[float],
+        side: Side,
+        max_fees_percent: float,
+        trigger_price: Optional[float] = None,
+        creation_deadline: Optional[int] = None,
+        order_flags: Optional[OrderFlags] = None,
+        tpsl: Optional[TPSLConfig] = None,
+    ) -> tuple[Nonce, OrderId]:
+        parent_order_request = CreateOrder(
+            symbol=symbol,
+            quantity=quantity,
+            side=side,
+            price=price,
+            trigger_price=trigger_price,
+            creation_deadline=creation_deadline,
+            order_flags=order_flags,
+            max_fees_percent=max_fees_percent,
+        )
+
+        nonce = time_ns() // 1_000
+
+        tpsl_order_requests = tpsl._as_requests(
+            parent_symbol=symbol,
+            parent_quantity=quantity,
+            parent_side=side,
+            parent_nonce=nonce,
+            max_fees_percent=max_fees_percent,
+        )
+
+        orders = [parent_order_request] + tpsl_order_requests
+        orders_data = [
+            self.__batch_order_request_data(nonce + i, order)
+            for (i, order) in enumerate(orders)
+        ]
+        request_data = {"accountId": int(self.account_id), "orders": orders_data}
+
+        result = self.__send_authorized_request(
+            "POST", f"/trade/orders", json=request_data
+        )
+        orders = [create_with(BatchResponseOrder, order) for order in result["orders"]]
+        if len(orders) < 1:
+            raise RuntimeError(
+                f"Received empty response to batch order request {request_data=}"
+            )
+        parent_order: BatchResponseOrder = orders[0]
+        return (parent_order.nonce, parent_order.orderId)
+
+    def update_order(
+        self,
+        order_id: int,
+        max_fees_percent: float,
+        quantity: Optional[float] = None,
+        price: Optional[float] = None,
+        trigger_price: Optional[float] = None,
+        creation_deadline: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Update an order
 
         Endpoint: `PUT /trade/order`
 
         ```python
-        max_fees_percent = 0.0005   
+        max_fees_percent = 0.0005
         client.update_order(order_id, max_fees_percent, quantity=0.002)
         client.update_order(order_id, max_fees_percent, price=1_050_000)
         client.update_order(order_id, max_fees_percent, trigger_price=1_100_000)
@@ -935,38 +1157,40 @@ class HibachiApiClient:
         self.__check_auth_data()
         order = self.get_order_details(order_id=order_id)
         symbol = order.symbol
-        
 
-        request_data_two = self._update_order_generate_sig(order, 
-                                                          price=price, 
-                                                          side=Side(order.side),
-                                                          max_fees_percent=max_fees_percent,
-                                                          trigger_price=trigger_price, 
-                                                          quantity=quantity, 
-                                                          creation_deadline=creation_deadline
-                                                          )
+        request_data_two = self._update_order_generate_sig(
+            order,
+            price=price,
+            side=Side(order.side),
+            max_fees_percent=max_fees_percent,
+            trigger_price=trigger_price,
+            quantity=quantity,
+            creation_deadline=creation_deadline,
+        )
 
-        return self.__send_authorized_request('PUT', f"/trade/order", json=request_data_two)
-    
-    def _update_order_generate_sig(self, 
-                                  order: Order, 
-                                  side: Side,
-                                  max_fees_percent: float,
-                                  price: Optional[float] = None, 
-                                  trigger_price: Optional[float] = None, 
-                                  quantity: Optional[float] = None,
-                                  creation_deadline: Optional[int] = None,
-                                  nonce: Optional[Nonce] = None
-                                  ) -> Dict[str, Any]:
-        """ used to generate the signature for the update order request """
-        symbol = order.symbol        
+        return self.__send_authorized_request(
+            "PUT", f"/trade/order", json=request_data_two
+        )
+
+    def _update_order_generate_sig(
+        self,
+        order: Order,
+        side: Side,
+        max_fees_percent: float,
+        price: Optional[float] = None,
+        trigger_price: Optional[float] = None,
+        quantity: Optional[float] = None,
+        creation_deadline: Optional[int] = None,
+        nonce: Optional[Nonce] = None,
+    ) -> Dict[str, Any]:
+        """used to generate the signature for the update order request"""
+        symbol = order.symbol
         self.__check_symbol(symbol)
-        
 
-        if order.orderType == 'MARKET' and price is not None:
+        if order.orderType == "MARKET" and price is not None:
             raise ValueError("Can not update price for a market order")
 
-        if order.orderType == 'LIMIT' and price is None:
+        if order.orderType == "LIMIT" and price is None:
             price = float(order.price)
 
         if order.triggerPrice is None and trigger_price is not None:
@@ -986,12 +1210,23 @@ class HibachiApiClient:
             side = Side.ASK
 
         nonce = time_ns() // 1_000 if nonce is None else nonce
-        request_data = self.__update_order_request_data(order.orderId, nonce, symbol, quantity, side, max_fees_percent, price=price, trigger_price=trigger_price, creation_deadline=creation_deadline)
+        request_data = self.__update_order_request_data(
+            order.orderId,
+            nonce,
+            symbol,
+            quantity,
+            side,
+            max_fees_percent,
+            price=price,
+            trigger_price=trigger_price,
+            creation_deadline=creation_deadline,
+        )
         request_data["accountId"] = self.account_id
         return request_data
 
-
-    def cancel_order(self, order_id: Optional[int] = None, nonce: Optional[int] = None) -> Dict[str, Any]:
+    def cancel_order(
+        self, order_id: Optional[int] = None, nonce: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Cancel an order
 
@@ -1007,7 +1242,9 @@ class HibachiApiClient:
 
         request_data = self._cancel_order_request_data(order_id, nonce, True)
         request_data["accountId"] = int(self.account_id)
-        return self.__send_authorized_request('DELETE', f"/trade/order", json=request_data)
+        return self.__send_authorized_request(
+            "DELETE", f"/trade/order", json=request_data
+        )
 
     def cancel_all_orders(self, contractId: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -1029,14 +1266,18 @@ class HibachiApiClient:
             for order in orders:
                 self.cancel_order(order_id=int(order.orderId))
             return
-        else:            
+        else:
             self.__check_auth_data()
             nonce = time_ns() // 1_000
             request_data = self._cancel_order_request_data(None, nonce, False)
             request_data["accountId"] = int(self.account_id)
-            return self.__send_authorized_request('DELETE', f"/trade/orders", json=request_data)
+            return self.__send_authorized_request(
+                "DELETE", f"/trade/orders", json=request_data
+            )
 
-    def batch_orders(self, orders: list[CreateOrder | UpdateOrder | CancelOrder]) -> BatchResponse:
+    def batch_orders(
+        self, orders: list[CreateOrder | UpdateOrder | CancelOrder]
+    ) -> BatchResponse:
         """
         Creating, updating and cancelling orders can be done in a batch
         This requires knowing all details of the existing orders, there is no shortcut for update order details
@@ -1083,22 +1324,18 @@ class HibachiApiClient:
         self.__check_auth_data()
 
         nonce = time_ns() // 1_000
-        orders_data = [self.__batch_order_request_data(nonce + i, order) for (i, order) in enumerate(orders)]
-        request_data = {
-            "accountId": int(self.account_id),
-            "orders": orders_data
-        }
-
-        result = self.__send_authorized_request('POST', f"/trade/orders", json=request_data)
-        allowed_keys = BatchResponseOrder.__dataclass_fields__.keys()
-        orders = [
-            BatchResponseOrder(**{k: v for k, v in order.items() if k in allowed_keys})
-            for order in result["orders"]
+        orders_data = [
+            self.__batch_order_request_data(nonce + i, order)
+            for (i, order) in enumerate(orders)
         ]
+        request_data = {"accountId": int(self.account_id), "orders": orders_data}
 
-
-        result['orders'] = orders
-        return BatchResponse(**result)
+        result = self.__send_authorized_request(
+            "POST", f"/trade/orders", json=request_data
+        )
+        orders = [create_with(BatchResponseOrder, order) for order in result["orders"]]
+        result["orders"] = orders
+        return create_with(BatchResponse, result)
 
     """ Private helpers """
 
@@ -1116,14 +1353,18 @@ class HibachiApiClient:
         if self.api_key is None:
             raise RuntimeError("API key is not set")
 
-    def __send_authorized_request(self, method: str, path: str, json: Optional[Any] = None) -> Any:
+    def __send_authorized_request(
+        self, method: str, path: str, json: Optional[Any] = None
+    ) -> Any:
         headers = {
             "Authorization": self.api_key,
             "Content-Type": "application/json",
-            "Accept": "application/json"
-        }      
+            "Accept": "application/json",
+        }
 
-        response = requests.request(method, f"{self.api_url}{path}", headers=headers, json=json)
+        response = requests.request(
+            method, f"{self.api_url}{path}", headers=headers, json=json
+        )
         error = _get_http_error(response)
         if error is not None:
             raise error
@@ -1152,39 +1393,74 @@ class HibachiApiClient:
             signed_message = self._private_key.sign_msg_hash(message_hash)
 
             # Extract signature components
-            r = signed_message.r.to_bytes(32, 'big')
-            s = signed_message.s.to_bytes(32, 'big')
-            v = signed_message.v.to_bytes(1, 'big')
+            r = signed_message.r.to_bytes(32, "big")
+            s = signed_message.s.to_bytes(32, "big")
+            v = signed_message.v.to_bytes(1, "big")
 
             # Combine to form the signature
             signature_hex = r.hex() + s.hex() + v.hex()
 
             return signature_hex
-        
+
         if self._private_key_hmac:
-            return hmac.new(self._private_key_hmac.encode(), payload, sha256).hexdigest()
+            return hmac.new(
+                self._private_key_hmac.encode(), payload, sha256
+            ).hexdigest()
 
         raise RuntimeError("Private key is not set")
 
-    def __create_or_update_order_payload(self, contract: FutureContract, nonce: int, quantity: float, side: Side, max_fees_percent: float, price: Optional[float]) -> bytes:
+    def __create_or_update_order_payload(
+        self,
+        contract: FutureContract,
+        nonce: int,
+        quantity: float,
+        side: Side,
+        max_fees_percent: float,
+        price: Optional[float],
+    ) -> bytes:
         contract_id = contract.id
 
-        nonce_bytes = nonce.to_bytes(8, 'big')
-        contract_id_bytes = contract_id.to_bytes(4, 'big')
-        quantity_bytes = int(quantity * pow(10, contract.underlyingDecimals)).to_bytes(8, 'big')
+        nonce_bytes = nonce.to_bytes(8, "big")
+        contract_id_bytes = contract_id.to_bytes(4, "big")
+        quantity_bytes = int(quantity * pow(10, contract.underlyingDecimals)).to_bytes(
+            8, "big"
+        )
         price_bytes = b"" if price is None else price_to_bytes(price, contract)
-        side_bytes = (0 if side.value == "ASK" else 1).to_bytes(4, 'big')
-        max_fees_percent_bytes = int(max_fees_percent * pow(10, 8)).to_bytes(8, 'big')
+        side_bytes = (0 if side.value == "ASK" else 1).to_bytes(4, "big")
+        max_fees_percent_bytes = int(max_fees_percent * pow(10, 8)).to_bytes(8, "big")
 
-        payload = nonce_bytes + contract_id_bytes + quantity_bytes + side_bytes + price_bytes + max_fees_percent_bytes
+        payload = (
+            nonce_bytes
+            + contract_id_bytes
+            + quantity_bytes
+            + side_bytes
+            + price_bytes
+            + max_fees_percent_bytes
+        )
 
         return payload
 
-    def _create_order_request_data(self, nonce: int, symbol: str, quantity: float, side: Side, max_fees_percent: float, trigger_price: Optional[float], price: Optional[float], creation_deadline: Optional[int], twap_config: Optional[TWAPConfig] = None) -> Dict[str, Any]:
+    def _create_order_request_data(
+        self,
+        nonce: int,
+        symbol: str,
+        quantity: float,
+        side: Side,
+        max_fees_percent: float,
+        trigger_price: Optional[float],
+        price: Optional[float],
+        creation_deadline: Optional[int],
+        twap_config: Optional[TWAPConfig] = None,
+        parent_order: Optional[OrderIdVariant] = None,
+        order_flags: Optional[OrderFlags] = None,
+        trigger_direction: Optional[TriggerDirection] = None,
+    ) -> Dict[str, Any]:
         self.__check_auth_data()
         self.__check_symbol(symbol)
         contract = self.future_contracts.get(symbol)
-        payload = self.__create_or_update_order_payload(contract, nonce, quantity, side, max_fees_percent, price)
+        payload = self.__create_or_update_order_payload(
+            contract, nonce, quantity, side, max_fees_percent, price
+        )
         signature = self.__sign_payload(payload)
 
         if side == Side.BUY:
@@ -1206,19 +1482,37 @@ class HibachiApiClient:
             request["price"] = str(price)
         if trigger_price is not None:
             request["triggerPrice"] = str(trigger_price)
+            if trigger_direction is not None:
+                request["triggerDirection"] = trigger_direction.value
         if twap_config is not None:
             request = request | twap_config.to_dict()
         if creation_deadline is not None:
             deadline = floor(time()) + creation_deadline
             request["creationDeadline"] = deadline
-
-   
+        if parent_order is not None:
+            request["parentOrder"] = parent_order.to_dict()
+        if order_flags is not None:
+            request["orderFlags"] = order_flags.value
 
         return request
 
-    def __update_order_request_data(self, order_id: int, nonce: int, symbol: str, quantity: float, side: Side, max_fees_percent: float, price: Optional[float], trigger_price: Optional[float], creation_deadline: Optional[int]) -> Dict[str, Any]:
+    def __update_order_request_data(
+        self,
+        order_id: int,
+        nonce: int,
+        symbol: str,
+        quantity: float,
+        side: Side,
+        max_fees_percent: float,
+        price: Optional[float],
+        trigger_price: Optional[float],
+        creation_deadline: Optional[int],
+        order_flags: Optional[OrderFlags] = None,
+    ) -> Dict[str, Any]:
         contract = self.future_contracts.get(symbol)
-        payload = self.__create_or_update_order_payload(contract, nonce, quantity, side, max_fees_percent, price)
+        payload = self.__create_or_update_order_payload(
+            contract, nonce, quantity, side, max_fees_percent, price
+        )
         signature = self.__sign_payload(payload)
         request = {
             "nonce": nonce,
@@ -1238,19 +1532,23 @@ class HibachiApiClient:
         if creation_deadline is not None:
             deadline = floor(time()) + creation_deadline
             request["creationDeadline"] = deadline
+        if order_flags is not None:
+            request["orderFlags"] = order_flags.value
         return request
 
-    def __cancel_order_payload(self, order_id: Optional[int], nonce: Optional[int]) -> bytes:
+    def __cancel_order_payload(
+        self, order_id: Optional[int], nonce: Optional[int]
+    ) -> bytes:
         if order_id is not None:
-            return order_id.to_bytes(8, 'big')
-        return nonce.to_bytes(8, 'big')
+            return order_id.to_bytes(8, "big")
+        return nonce.to_bytes(8, "big")
 
-    def _cancel_order_request_data(self, order_id: Optional[int], nonce: Optional[int], nonce_as_str: bool) -> Dict[str, Any]:
+    def _cancel_order_request_data(
+        self, order_id: Optional[int], nonce: Optional[int], nonce_as_str: bool
+    ) -> Dict[str, Any]:
         payload = self.__cancel_order_payload(order_id, nonce)
         signature = self.__sign_payload(payload)
-        request = {
-            "signature": signature
-        }
+        request = {"signature": signature}
         if order_id is not None:
             request["orderId"] = str(order_id)
         elif nonce_as_str:
@@ -1259,11 +1557,37 @@ class HibachiApiClient:
             request["nonce"] = nonce
         return request
 
-    def __batch_order_request_data(self, nonce: int, o: CreateOrder | UpdateOrder | CancelOrder) -> Dict[str, Any]:
+    def __batch_order_request_data(
+        self, nonce: int, o: CreateOrder | UpdateOrder | CancelOrder
+    ) -> Dict[str, Any]:
         if type(o) is CreateOrder:
-            payload = self._create_order_request_data(nonce, o.symbol, o.quantity, o.side, o.max_fees_percent, o.trigger_price, o.price, o.creation_deadline, twap_config=o.twap_config)
+            payload = self._create_order_request_data(
+                nonce,
+                o.symbol,
+                o.quantity,
+                o.side,
+                o.max_fees_percent,
+                o.trigger_price,
+                o.price,
+                o.creation_deadline,
+                twap_config=o.twap_config,
+                order_flags=o.order_flags,
+                parent_order=o.parent_order,
+                trigger_direction=o.trigger_direction,
+            )
         elif type(o) is UpdateOrder:
-            payload = self.__update_order_request_data(o.order_id, nonce, o.symbol, o.quantity, o.side, o.max_fees_percent, o.price, o.trigger_price, o.creation_deadline)
+            payload = self.__update_order_request_data(
+                o.order_id,
+                nonce,
+                o.symbol,
+                o.quantity,
+                o.side,
+                o.max_fees_percent,
+                o.price,
+                o.trigger_price,
+                o.creation_deadline,
+                order_flags=o.order_flags,
+            )
         else:
             payload = self._cancel_order_request_data(o.order_id, o.nonce, True)
         payload["action"] = o.action

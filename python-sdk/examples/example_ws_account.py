@@ -29,9 +29,7 @@ async def example_ws_account(max_messages: int = None):
     while True:
         print(f"[{now()}] [Attempt {attempt}] Connecting to WebSocket...")
         client = HibachiWSAccountClient(
-            api_endpoint=ws_base_url,
-            api_key=api_key,
-            account_id=account_id
+            api_endpoint=ws_base_url, api_key=api_key, account_id=account_id
         )
 
         client.on("balance_update", handle_balance)
@@ -51,8 +49,10 @@ async def example_ws_account(max_messages: int = None):
             while True:
                 message = await client.listen()
                 if message is None:
-                    print(f"[{now()}] No message received. (Ping sent.) "
-                          f"Last message was {int(time.time() - last_msg_time)}s ago.")
+                    print(
+                        f"[{now()}] No message received. (Ping sent.) "
+                        f"Last message was {int(time.time() - last_msg_time)}s ago."
+                    )
                     continue
 
                 last_msg_time = time.time()
