@@ -61,29 +61,23 @@ jobs:
     executor: python-executor
     steps:
       - checkout
-      - when:
-          condition: 
-            and: 
-              - << pipeline.parameters.publish_sdk >>
-              - << pipeline.parameters.environment == "production" >>
-          steps:
-            - run:
-                name: Patch version dynamically
-                command: |
-                  VERSION_SUFFIX=$(date +%Y%m%d%H%M%S)
-                  sed -i "s/^version = .*/version = \"0.0.1.dev$VERSION_SUFFIX\"/" python-sdk/pyproject.toml
-                  grep version python-sdk/pyproject.toml
-            - run: pip install build twine
-            - run:
-                name: Build SDK
-                command: |
-                  echo 'dry run publish'
-                  # python -m build -s -w python-sdk
-            - run:
-                name: Publish to PyPI
-                command: |
-                  # twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
-                  echo 'dry run publish'
+      - run:
+          name: Patch version dynamically
+          command: |
+            VERSION_SUFFIX=$(date +%Y%m%d%H%M%S)
+            sed -i "s/^version = .*/version = \"0.0.1.dev$VERSION_SUFFIX\"/" python-sdk/pyproject.toml
+            grep version python-sdk/pyproject.toml
+      - run: pip install build twine
+      - run:
+          name: Build SDK
+          command: |
+            # echo 'dry run publish'
+            python -m build -s -w python-sdk
+      - run:
+          name: Publish to PyPI
+          command: |
+            twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
+            # echo 'dry run publish'
 
 workflows:
   sdk-tests-and-deploy:
