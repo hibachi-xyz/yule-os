@@ -72,13 +72,13 @@ jobs:
       - run:
           name: Build SDK
           command: |
-            # echo 'dry run publish'
-            python -m build -s -w python-sdk
+            echo 'dry run publish'
+            # python -m build -s -w python-sdk
       - run:
           name: Publish to PyPI
           command: |
-            twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
-            # echo 'dry run publish'
+            # twine upload python-sdk/dist/* -u __token__ -p "$PYPI_TOKEN"
+            echo 'dry run publish'
 
 workflows:
   sdk-tests-and-deploy:
