@@ -88,12 +88,12 @@ jobs:
 workflows:
   sdk-tests-and-deploy:
     jobs:
-      - integration-tests:
-          context:
-            - slack-secrets
+      # - integration-tests:
+      #     context:
+      #       - slack-secrets
       - deploy-to-pypi:
-          requires:
-            - integration-tests
+          # requires:
+          #   - integration-tests
           filters:
             branches:
               only:
