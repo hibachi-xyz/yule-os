@@ -6,6 +6,7 @@ from hibachi_xyz.types import (
     FutureContract,
     Side,
     TPSLConfig,
+    TriggerDirection,
     TWAPConfig,
     TWAPQuantityMode,
 )
@@ -140,3 +141,113 @@ def test_place_market_order_twap_with_tpsl(mock_http_client):
         )
 
     assert "Can not set tpsl for TWAP order" in str(exc_info.value)
+
+
+BTC_CONTRACT = FutureContract(
+    displayName="BTC/USDT Perps",
+    id=1,
+    initialMarginRate="0.066667",
+    maintenanceMarginRate="0.046667",
+    marketCloseTimestamp=None,
+    marketCreationTimestamp="1727701319.73488",
+    marketOpenTimestamp=None,
+    minNotional="1",
+    minOrderSize="0.000000001",
+    orderbookGranularities=["0.01", "0.1", "1"],
+    settlementDecimals=6,
+    settlementSymbol="USDT",
+    status="LIVE",
+    stepSize="0.000000001",
+    symbol="BTC/USDT-P",
+    tickSize="0.000001",
+    underlyingDecimals=8,
+    underlyingSymbol="BTC",
+)
+
+
+def _stage_market_order(mock_http, order_id=12345):
+    mock_http.stage_output(
+        MockSuccessfulOutput(
+            output=HttpResponse(status=200, body={"orderId": order_id}),
+            call_validation=lambda call: call.function_name == "send_authorized_request"
+            and call.arg_pack[0:2] == ("POST", "/trade/order"),
+        )
+    )
+
+
+@pytest.mark.parametrize("direction", [TriggerDirection.HIGH, TriggerDirection.LOW])
+def test_place_market_order_trigger_direction_included_in_request(
+    mock_http_client, direction
+):
+    client, mock_http = mock_http_client
+    client._future_contracts = {"BTC/USDT-P": BTC_CONTRACT}
+
+    captured = {}
+
+    mock_http.stage_output(
+        MockSuccessfulOutput(
+            output=HttpResponse(status=200, body={"orderId": 12345}),
+            call_validation=lambda call: captured.update({"body": call.arg_pack[2]})
+            or (
+                call.function_name == "send_authorized_request"
+                and call.arg_pack[0:2] == ("POST", "/trade/order")
+            ),
+        )
+    )
+
+    client.place_market_order(
+        "BTC/USDT-P",
+        0.001,
+        Side.BUY,
+        0.001,
+        trigger_price=85_000,
+        trigger_direction=direction,
+    )
+
+    assert captured["body"]["triggerDirection"] == direction.value
+
+
+def test_place_market_order_trigger_direction_absent_when_not_provided(
+    mock_http_client,
+):
+    client, mock_http = mock_http_client
+    client._future_contracts = {"BTC/USDT-P": BTC_CONTRACT}
+
+    captured = {}
+
+    mock_http.stage_output(
+        MockSuccessfulOutput(
+            output=HttpResponse(status=200, body={"orderId": 12345}),
+            call_validation=lambda call: captured.update({"body": call.arg_pack[2]})
+            or (
+                call.function_name == "send_authorized_request"
+                and call.arg_pack[0:2] == ("POST", "/trade/order")
+            ),
+        )
+    )
+
+    client.place_market_order(
+        "BTC/USDT-P", 0.001, Side.BUY, 0.001, trigger_price=85_000
+    )
+
+    assert "triggerDirection" not in captured["body"]
+
+
+def test_place_market_order_trigger_price_with_tpsl_raises(mock_http_client):
+    """The exchange rejects parent orders that are also trigger orders."""
+    client, mock_http = mock_http_client
+    client._future_contracts = {"BTC/USDT-P": BTC_CONTRACT}
+
+    tpsl = TPSLConfig().add_take_profit(price=90_000)
+    with pytest.raises(ValidationError) as exc_info:
+        client.place_market_order(
+            "BTC/USDT-P",
+            0.001,
+            Side.BUY,
+            0.001,
+            trigger_price=85_000,
+            tpsl=tpsl,
+        )
+
+    assert "trigger price" in str(exc_info.value).lower()
+    assert "tpsl" in str(exc_info.value).lower()

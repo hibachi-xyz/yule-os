@@ -1245,6 +1245,7 @@ class HibachiApiClient:
         creation_deadline: HibachiNumericInput | None = None,
         order_flags: OrderFlags | None = None,
         tpsl: TPSLConfig | None = None,
+        trigger_direction: TriggerDirection | None = None,
     ) -> tuple[Nonce, OrderId]:
         """Place a market order.
 
@@ -1261,12 +1262,15 @@ class HibachiApiClient:
             creation_deadline: Deadline in seconds for order creation (optional)
             order_flags: Additional order flags (optional)
             tpsl: Take-profit/stop-loss configuration (optional)
+            trigger_direction: Direction for trigger activation — HIGH or LOW (optional)
 
         Returns:
             tuple[Nonce, OrderId]: Tuple containing the nonce (defaults to current epoch timestamp in μs) and order ID
 
         Raises:
-            ValueError: If both twap_config and trigger_price are set, or if twap_config and tpsl are set
+            ValueError: If both twap_config and trigger_price are set, or if twap_config and tpsl are set,
+                or if trigger_price and tpsl are set together (the exchange does not allow a parent order
+                to also be a trigger order)
             DeserializationError: If the API response cannot be parsed
 
         Example:
@@ -1276,6 +1280,7 @@ class HibachiApiClient:
                 (nonce, order_id) = client.place_market_order("BTC/USDT-P", 0.0001, Side.SELL, max_fees_percent)
                 (nonce, order_id) = client.place_market_order("BTC/USDT-P", 0.0001, Side.BID, max_fees_percent, creation_deadline=2)
                 (nonce, order_id) = client.place_market_order("BTC/USDT-P", 0.0001, Side.ASK, max_fees_percent, trigger_price=1_000_000)
+                (nonce, order_id) = client.place_market_order("BTC/USDT-P", 0.0001, Side.ASK, max_fees_percent, trigger_price=1_000_000, trigger_direction=TriggerDirection.LOW)
                 (nonce, order_id) = client.place_market_order("SOL/USDT-P", 1, Side.BID, max_fees_percent, twap_config=twap_config)
 
         Endpoint:
@@ -1295,6 +1300,11 @@ class HibachiApiClient:
         if twap_config is not None and tpsl is not None:
             raise ValidationError("Can not set tpsl for TWAP order")
 
+        if tpsl is not None and len(tpsl.legs) > 0 and trigger_price is not None:
+            raise ValidationError(
+                "Can not set trigger price on a parent order with TPSL"
+            )
+
         quantity = numeric_to_decimal(quantity)
         max_fees_percent = numeric_to_decimal(max_fees_percent)
         trigger_price = numeric_to_decimal(trigger_price)
@@ -1307,7 +1317,6 @@ class HibachiApiClient:
                 quantity=quantity,
                 side=side,
                 max_fees_percent=max_fees_percent,
-                trigger_price=trigger_price,
                 creation_deadline=creation_deadline,
                 order_flags=order_flags,
                 tpsl=tpsl,
@@ -1325,6 +1334,7 @@ class HibachiApiClient:
             creation_deadline,
             twap_config=twap_config,
             order_flags=order_flags,
+            trigger_direction=trigger_direction,
         )
         request_data["accountId"] = self.account_id
         response = self.__send_authorized_request(
@@ -1348,6 +1358,7 @@ class HibachiApiClient:
         creation_deadline: HibachiNumericInput | None = None,
         order_flags: OrderFlags | None = None,
         tpsl: TPSLConfig | None = None,
+        trigger_direction: TriggerDirection | None = None,
     ) -> tuple[Nonce, OrderId]:
         """Place a limit order.
 
@@ -1364,11 +1375,14 @@ class HibachiApiClient:
             creation_deadline: Deadline in seconds for order creation (optional)
             order_flags: Additional order flags (optional)
             tpsl: Take-profit/stop-loss configuration (optional)
+            trigger_direction: Direction for trigger activation — HIGH or LOW (optional)
 
         Returns:
             tuple[Nonce, OrderId]: Tuple containing the nonce (defaults to current epoch timestamp in μs) and order ID
 
         Raises:
+            ValueError: If trigger_price and tpsl are set together (the exchange does not allow a parent
+                order to also be a trigger order)
             DeserializationError: If the API response cannot be parsed
 
         Example:
@@ -1378,6 +1392,7 @@ class HibachiApiClient:
                 (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, 80_000, Side.SELL, max_fees_percent)
                 (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, 80_000, Side.BID, max_fees_percent, creation_deadline=2)
                 (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, 1_001_000, Side.ASK, max_fees_percent, trigger_price=1_000_000)
+                (nonce, order_id) = client.place_limit_order("BTC/USDT-P", 0.0001, 1_001_000, Side.ASK, max_fees_percent, trigger_price=1_000_000, trigger_direction=TriggerDirection.LOW)
                 (nonce, limit_order_id) = client.place_limit_order("BTC/USDT-P", 0.001, 6_000, Side.BID, max_fees_percent)
 
         Endpoint:
@@ -1390,6 +1405,11 @@ class HibachiApiClient:
             side = Side.BID
         elif side == Side.SELL:
             side = Side.ASK
+
+        if tpsl is not None and len(tpsl.legs) > 0 and trigger_price is not None:
+            raise ValidationError(
+                "Can not set trigger price on a parent order with TPSL"
+            )
 
         price = numeric_to_decimal(price)
         quantity = numeric_to_decimal(quantity)
@@ -1404,7 +1424,6 @@ class HibachiApiClient:
                 quantity=quantity,
                 side=side,
                 max_fees_percent=max_fees_percent,
-                trigger_price=trigger_price,
                 creation_deadline=creation_deadline,
                 order_flags=order_flags,
                 tpsl=tpsl,
@@ -1421,6 +1440,7 @@ class HibachiApiClient:
             price,
             creation_deadline,
             order_flags=order_flags,
+            trigger_direction=trigger_direction,
         )
         request_data["accountId"] = self.account_id
         response = self.__send_authorized_request(
@@ -1441,13 +1461,13 @@ class HibachiApiClient:
         side: Side,
         max_fees_percent: Decimal,
         tpsl: TPSLConfig,
-        trigger_price: Decimal | None = None,
         creation_deadline: Decimal | None = None,
         order_flags: OrderFlags | None = None,
     ) -> tuple[Nonce, OrderId]:
         """Place a parent order with take-profit/stop-loss child orders.
 
         Creates a parent order along with its configured TP/SL child orders in a single batch.
+        The parent order must not be a trigger order — the exchange rejects that combination.
 
         Args:
             symbol: Trading symbol
@@ -1456,7 +1476,6 @@ class HibachiApiClient:
             side: Order side (BID/ASK)
             max_fees_percent: Maximum fees as percentage
             tpsl: Take-profit/stop-loss configuration
-            trigger_price: Trigger price for parent order (optional)
             creation_deadline: Deadline for order creation (optional)
             order_flags: Additional order flags (optional)
 
@@ -1473,7 +1492,6 @@ class HibachiApiClient:
             quantity=quantity,
             side=side,
             price=price,
-            trigger_price=trigger_price,
             creation_deadline=creation_deadline,
             order_flags=order_flags,
             max_fees_percent=max_fees_percent,
