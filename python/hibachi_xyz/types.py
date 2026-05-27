@@ -439,7 +439,7 @@ class TPSLConfig:
                     side=side,
                     quantity=leg.quantity or numeric_to_decimal(parent_quantity),
                     max_fees_percent=numeric_to_decimal(max_fees_percent),
-                    trigger_price=numeric_to_decimal(max_fees_percent),
+                    trigger_price=leg.price,
                     trigger_direction=trigger_direction,
                     parent_order=OrderIdVariant.from_nonce(parent_nonce),
                     order_flags=OrderFlags.ReduceOnly,
