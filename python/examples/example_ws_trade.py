@@ -1,6 +1,6 @@
 import asyncio
 
-from hibachi_xyz import HibachiWSTradeClient, print_data
+from hibachi_xyz import HibachiWSTradeClient, print_data, round_price_to_tick
 from hibachi_xyz.env_setup import setup_environment
 from hibachi_xyz.types import OrderPlaceParams, OrderType, Side
 
@@ -38,6 +38,7 @@ async def example_ws_trade():
 
         # place an order using REST
         current_price = client.api.get_prices("BTC/USDT-P")
+        tick_size = client.api.get_tick_size("BTC/USDT-P")
         print(f"current_price: {current_price}")
 
         len(client.api.get_pending_orders().orders)
@@ -47,7 +48,7 @@ async def example_ws_trade():
             quantity=0.0001,
             side=Side.ASK,
             max_fees_percent=0.005,
-            price=float(current_price.askPrice) * 1.05,
+            price=round_price_to_tick(float(current_price.askPrice) * 1.05, tick_size),
         )
 
         # websocket orders status
@@ -61,7 +62,7 @@ async def example_ws_trade():
 
         # all orders cleared again...
 
-        price_before = float(current_price.askPrice) * 0.9
+        price_before = round_price_to_tick(float(current_price.askPrice) * 0.9, tick_size)
         # place an order using websocket
         (nonce, order_id) = await client.place_order(
             OrderPlaceParams(
@@ -79,7 +80,7 @@ async def example_ws_trade():
 
         print(f"place new order nonce: {nonce} order_id: {order_id}")
         order = await client.get_order_status(order_id)
-        price_after = float(current_price.askPrice) * 0.91
+        price_after = round_price_to_tick(float(current_price.askPrice) * 0.91, tick_size)
 
         # ---- test using rest
         order_details = client.api.get_order_details(order_id=int(order.result.orderId))
