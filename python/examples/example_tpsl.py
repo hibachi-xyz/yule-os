@@ -33,7 +33,9 @@ def example_tpsl_rest():
     exch_info = hibachi.get_exchange_info()
     prices = hibachi.get_prices("SOL/USDT-P")
 
-    sol_contract = next(c for c in exch_info.futureContracts if c.symbol == "SOL/USDT-P")
+    sol_contract = next(
+        c for c in exch_info.futureContracts if c.symbol == "SOL/USDT-P"
+    )
     tick = sol_contract.tickSize
 
     max_fees_percent = float(exch_info.feeConfig.tradeTakerFeeRate) * 2.0
@@ -68,15 +70,18 @@ def example_tpsl_rest():
         tpsl=TPSLConfig()
         # sell up to 25% quantity when price hits 1.2 * current mark price
         .add_take_profit(
-            price=round_price_to_tick(mark * 1.20, tick), quantity=position_quantity * 0.25
+            price=round_price_to_tick(mark * 1.20, tick),
+            quantity=position_quantity * 0.25,
         )
         # sell up to 75% quantity when price hits 1.1 * current mark price
         .add_take_profit(
-            price=round_price_to_tick(mark * 1.10, tick), quantity=position_quantity * 0.75
+            price=round_price_to_tick(mark * 1.10, tick),
+            quantity=position_quantity * 0.75,
         )
         # sell up to 75% quantity when price hits 0.9 * current mark price
         .add_stop_loss(
-            price=round_price_to_tick(mark * 0.9, tick), quantity=position_quantity * 0.75
+            price=round_price_to_tick(mark * 0.9, tick),
+            quantity=position_quantity * 0.75,
         )
         # sell any remaining quantity when price hits 0.85 * current mark price
         .add_stop_loss(
@@ -135,7 +140,9 @@ async def example_tpsl_ws_client():
         exch_info = client.api.get_exchange_info()
         prices = client.api.get_prices("SOL/USDT-P")
 
-        sol_contract = next(c for c in exch_info.futureContracts if c.symbol == "SOL/USDT-P")
+        sol_contract = next(
+            c for c in exch_info.futureContracts if c.symbol == "SOL/USDT-P"
+        )
         tick = sol_contract.tickSize
 
         max_fees_percent = float(exch_info.feeConfig.tradeTakerFeeRate) * 2.0
@@ -170,15 +177,18 @@ async def example_tpsl_ws_client():
             tpsl=TPSLConfig()
             # sell up to 25% quantity when price hits 1.2 * current mark price
             .add_take_profit(
-                price=round_price_to_tick(mark * 1.20, tick), quantity=position_quantity * 0.25
+                price=round_price_to_tick(mark * 1.20, tick),
+                quantity=position_quantity * 0.25,
             )
             # sell up to 75% quantity when price hits 1.1 * current mark price
             .add_take_profit(
-                price=round_price_to_tick(mark * 1.10, tick), quantity=position_quantity * 0.75
+                price=round_price_to_tick(mark * 1.10, tick),
+                quantity=position_quantity * 0.75,
             )
             # sell up to 75% quantity when price hits 0.9 * current mark price
             .add_stop_loss(
-                price=round_price_to_tick(mark * 0.9, tick), quantity=position_quantity * 0.75
+                price=round_price_to_tick(mark * 0.9, tick),
+                quantity=position_quantity * 0.75,
             )
             # sell any remaining quantity when price hits 0.85 * current mark price
             .add_stop_loss(
@@ -216,5 +226,5 @@ async def example_tpsl_ws_client():
 
 
 if __name__ == "__main__":
-    #example_tpsl_rest()
+    # example_tpsl_rest()
     asyncio.run(example_tpsl_ws_client())

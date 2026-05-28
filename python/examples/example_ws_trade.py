@@ -62,7 +62,9 @@ async def example_ws_trade():
 
         # all orders cleared again...
 
-        price_before = round_price_to_tick(float(current_price.askPrice) * 0.9, tick_size)
+        price_before = round_price_to_tick(
+            float(current_price.askPrice) * 0.9, tick_size
+        )
         # place an order using websocket
         (nonce, order_id) = await client.place_order(
             OrderPlaceParams(
@@ -80,7 +82,9 @@ async def example_ws_trade():
 
         print(f"place new order nonce: {nonce} order_id: {order_id}")
         order = await client.get_order_status(order_id)
-        price_after = round_price_to_tick(float(current_price.askPrice) * 0.91, tick_size)
+        price_after = round_price_to_tick(
+            float(current_price.askPrice) * 0.91, tick_size
+        )
 
         # ---- test using rest
         order_details = client.api.get_order_details(order_id=int(order.result.orderId))

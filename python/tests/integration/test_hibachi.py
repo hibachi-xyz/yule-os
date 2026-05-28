@@ -414,7 +414,12 @@ def test_place_market_order():
 
     # A more advanced order type is the trigger order, the actual order is placed only when the market price touches or crosses the trigger price
     (nonce, order_id) = client.place_market_order(
-        "BTC/USDT-P", 0.0001, Side.ASK, max_fees_percent, trigger_price=1_000_000, trigger_direction=TriggerDirection.HIGH
+        "BTC/USDT-P",
+        0.0001,
+        Side.ASK,
+        max_fees_percent,
+        trigger_price=1_000_000,
+        trigger_direction=TriggerDirection.HIGH,
     )
 
     # Market orders with considerable quantity can be automatically spread out in time by smaller, scheduled orders

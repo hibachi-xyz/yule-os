@@ -46,7 +46,9 @@ def example_trigger_direction():
     # --- Test 1: market order with trigger_price + trigger_direction=LOW ---
     # Simulates a stop-loss trigger: fires when price falls below trigger.
     stop_price = round_price_to_tick(mark * 0.90, tick)
-    print(f"\n[1] place_market_order  trigger_price={stop_price}  trigger_direction=LOW")
+    print(
+        f"\n[1] place_market_order  trigger_price={stop_price}  trigger_direction=LOW"
+    )
     nonce, order_id = client.place_market_order(
         symbol=SYMBOL,
         quantity=QUANTITY,
@@ -65,7 +67,9 @@ def example_trigger_direction():
     # Simulates a take-profit trigger: fires when price rises above trigger.
     tp_trigger = round_price_to_tick(mark * 1.10, tick)
     tp_limit = round_price_to_tick(mark * 1.11, tick)
-    print(f"\n[2] place_limit_order  price={tp_limit}  trigger_price={tp_trigger}  trigger_direction=HIGH")
+    print(
+        f"\n[2] place_limit_order  price={tp_limit}  trigger_price={tp_trigger}  trigger_direction=HIGH"
+    )
     nonce, order_id = client.place_limit_order(
         symbol=SYMBOL,
         quantity=QUANTITY,
@@ -82,7 +86,7 @@ def example_trigger_direction():
     print(f"    Cancelled order_id={order_id}")
 
     # --- Test 3: SDK guard — trigger_price + tpsl must raise ValidationError ---
-    print(f"\n[3] SDK guard: trigger_price + tpsl should raise ValidationError")
+    print("\n[3] SDK guard: trigger_price + tpsl should raise ValidationError")
     raised = False
     try:
         client.place_market_order(
@@ -101,7 +105,9 @@ def example_trigger_direction():
     # --- Test 4: trigger_direction without trigger_price places a plain market order ---
     # trigger_direction is only serialised when trigger_price is also set,
     # so passing it alone should place a plain market order without error.
-    print(f"\n[4] trigger_direction without trigger_price — should place a plain market order")
+    print(
+        "\n[4] trigger_direction without trigger_price — should place a plain market order"
+    )
     nonce, order_id = client.place_market_order(
         symbol=SYMBOL,
         quantity=QUANTITY,
