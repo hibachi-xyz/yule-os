@@ -13,6 +13,7 @@ from hibachi_xyz.types import (
     CreateOrderBatchResponse,
     ErrorBatchResponse,
     Side,
+    TriggerDirection,
     UpdateOrderBatchResponse,
 )
 
@@ -248,6 +249,7 @@ def example_auth_rest_api():
         side=Side.BID,
         max_fees_percent=float(exch_info.feeConfig.tradeTakerFeeRate) * 2.0,
         trigger_price=trigger_price,
+        trigger_direction=TriggerDirection.LOW,
     )
     print(f"Limit Order Placed: Nonce: {nonce}, Order ID: {order_id}")
 
@@ -313,7 +315,7 @@ def example_auth_rest_api():
     (nonce, limit_order_id) = hibachi.place_limit_order(
         symbol="BTC/USDT-P",
         quantity=0.001,
-        price=float(prices.bidPrice) * 0.975,
+        price=round_price_to_tick(float(prices.bidPrice) * 0.975, tick_size),
         side=Side.BID,
         max_fees_percent=max_fees_percent,
     )
@@ -321,10 +323,11 @@ def example_auth_rest_api():
     (nonce, trigger_limit_order_id) = hibachi.place_limit_order(
         symbol="BTC/USDT-P",
         quantity=0.001,
-        price=float(prices.askPrice) * 1.05,
+        price=round_price_to_tick(float(prices.askPrice) * 1.05, tick_size),
         side=Side.ASK,
         max_fees_percent=max_fees_percent,
-        trigger_price=float(prices.askPrice) * 1.025,
+        trigger_price=round_price_to_tick(float(prices.askPrice) * 1.025, tick_size),
+        trigger_direction=TriggerDirection.HIGH,
     )
 
     (nonce, trigger_market_order_id) = hibachi.place_market_order(
@@ -332,11 +335,16 @@ def example_auth_rest_api():
         quantity=0.001,
         side=Side.ASK,
         max_fees_percent=max_fees_percent,
-        trigger_price=float(prices.askPrice) * 1.025,
+        trigger_price=round_price_to_tick(float(prices.askPrice) * 1.025, tick_size),
+        trigger_direction=TriggerDirection.HIGH,
     )
 
     # Creating, updating and cancelling orders can be done in a batch
     # This requires knowing all details of the existing orders, there is no shortcut for update order details
+    ask = round_price_to_tick(float(prices.askPrice), tick_size)
+    spot = round_price_to_tick(float(prices.spotPrice), tick_size)
+    ask_tp = round_price_to_tick(float(prices.askPrice) * 1.05, tick_size)
+
     response = hibachi.batch_orders(
         [
             # Simple market order
@@ -347,24 +355,26 @@ def example_auth_rest_api():
                 Side.SELL,
                 0.001,
                 max_fees_percent,
-                price=float(prices.spotPrice),
+                price=spot,
             ),
-            # Trigger market order
+            # Trigger market order — fires when price drops to spot
             CreateOrder(
                 "BTC/USDT-P",
                 Side.SELL,
                 0.001,
                 max_fees_percent,
-                trigger_price=float(prices.spotPrice),
+                trigger_price=spot,
+                trigger_direction=TriggerDirection.LOW,
             ),
-            # Trigger limit order
+            # Trigger limit order — fires when price rises above ask
             CreateOrder(
                 "BTC/USDT-P",
                 Side.SELL,
                 0.001,
                 max_fees_percent,
-                price=float(prices.askPrice),
-                trigger_price=float(prices.askPrice) * 1.05,
+                price=ask,
+                trigger_price=ask_tp,
+                trigger_direction=TriggerDirection.HIGH,
             ),
             # TWAP order
             CreateOrder(
@@ -378,13 +388,13 @@ def example_auth_rest_api():
             CreateOrder(
                 "BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, creation_deadline=2
             ),
-            # Limit order, only valid if placed within one seconds
+            # Limit order, only valid if placed within one second
             CreateOrder(
                 "BTC/USDT-P",
                 Side.BUY,
                 0.001,
                 max_fees_percent,
-                price=float(prices.spotPrice),
+                price=spot,
                 creation_deadline=1,
             ),
             # Trigger market order, only valid if placed within three seconds
@@ -393,7 +403,8 @@ def example_auth_rest_api():
                 Side.BUY,
                 0.001,
                 max_fees_percent,
-                trigger_price=float(prices.askPrice),
+                trigger_price=ask,
+                trigger_direction=TriggerDirection.HIGH,
                 creation_deadline=3,
             ),
             # Trigger limit order, only valid if placed within five seconds
@@ -402,8 +413,9 @@ def example_auth_rest_api():
                 Side.BUY,
                 0.001,
                 max_fees_percent,
-                price=float(prices.askPrice),
-                trigger_price=float(prices.askPrice),
+                price=ask,
+                trigger_price=ask,
+                trigger_direction=TriggerDirection.HIGH,
                 creation_deadline=5,
             ),
             # TWAP order only valid if placed within two seconds
@@ -422,9 +434,9 @@ def example_auth_rest_api():
                 Side.BUY,
                 0.001,
                 max_fees_percent,
-                price=float(prices.askPrice),
+                price=ask,
             ),
-            # update trigger limit order
+            # Update trigger limit order
             # Need to fill all relevant optional parameters
             UpdateOrder(
                 trigger_limit_order_id,
@@ -432,10 +444,10 @@ def example_auth_rest_api():
                 Side.ASK,
                 0.002,
                 max_fees_percent,
-                price=float(prices.askPrice),
-                trigger_price=float(prices.askPrice),
+                price=ask,
+                trigger_price=ask,
             ),
-            # update trigger market order
+            # Update trigger market order
             # Need to fill all relevant optional parameters
             UpdateOrder(
                 trigger_market_order_id,
@@ -443,7 +455,7 @@ def example_auth_rest_api():
                 Side.ASK,
                 0.001,
                 max_fees_percent,
-                trigger_price=float(prices.askPrice),
+                trigger_price=ask,
             ),
             # Cancel order
             CancelOrder(order_id=limit_order_id),

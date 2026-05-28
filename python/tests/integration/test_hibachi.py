@@ -11,6 +11,7 @@ from hibachi_xyz import (
     TWAPQuantityMode,
     UpdateOrder,
     get_version,
+    round_price_to_tick,
 )
 from hibachi_xyz.env_setup import setup_environment
 from hibachi_xyz.errors import BadRequest
@@ -56,6 +57,7 @@ from hibachi_xyz.types import (
     TradesResponse,
     TradingTier,
     Transaction,
+    TriggerDirection,
     UpdateOrderBatchResponse,
     WithdrawalLimit,
 )
@@ -412,7 +414,12 @@ def test_place_market_order():
 
     # A more advanced order type is the trigger order, the actual order is placed only when the market price touches or crosses the trigger price
     (nonce, order_id) = client.place_market_order(
-        "BTC/USDT-P", 0.0001, Side.ASK, max_fees_percent, trigger_price=1_000_000
+        "BTC/USDT-P",
+        0.0001,
+        Side.ASK,
+        max_fees_percent,
+        trigger_price=1_000_000,
+        trigger_direction=TriggerDirection.HIGH,
     )
 
     # Market orders with considerable quantity can be automatically spread out in time by smaller, scheduled orders
@@ -497,8 +504,15 @@ def test_batch_order():
 
     exch_info = client.get_exchange_info()
     prices = client.get_prices("BTC/USDT-P")
+    tick = client.get_tick_size("BTC/USDT-P")
 
     max_fees_percent = float(exch_info.feeConfig.tradeTakerFeeRate) * 2.0
+
+    ask = round_price_to_tick(float(prices.askPrice), tick)
+    spot = round_price_to_tick(float(prices.spotPrice), tick)
+    bid_low = round_price_to_tick(float(prices.bidPrice) * 0.975, tick)
+    ask_tp = round_price_to_tick(float(prices.askPrice) * 1.025, tick)
+    ask_high = round_price_to_tick(float(prices.askPrice) * 1.05, tick)
 
     # Or all at once
     client.cancel_all_orders()
@@ -517,7 +531,7 @@ def test_batch_order():
     (nonce, limit_order_id) = client.place_limit_order(
         symbol="BTC/USDT-P",
         quantity=0.001,
-        price=float(prices.bidPrice) * 0.975,
+        price=bid_low,
         side=Side.BID,
         max_fees_percent=max_fees_percent,
     )
@@ -525,10 +539,11 @@ def test_batch_order():
     (nonce, trigger_limit_order_id) = client.place_limit_order(
         symbol="BTC/USDT-P",
         quantity=0.001,
-        price=float(prices.askPrice) * 1.05,
+        price=ask_high,
         side=Side.ASK,
         max_fees_percent=max_fees_percent,
-        trigger_price=float(prices.askPrice) * 1.025,
+        trigger_price=ask_tp,
+        trigger_direction=TriggerDirection.HIGH,
     )
 
     (nonce, trigger_market_order_id) = client.place_market_order(
@@ -536,7 +551,8 @@ def test_batch_order():
         quantity=0.001,
         side=Side.ASK,
         max_fees_percent=max_fees_percent,
-        trigger_price=float(prices.askPrice) * 1.025,
+        trigger_price=ask_tp,
+        trigger_direction=TriggerDirection.HIGH,
     )
 
     # Creating, updating and cancelling orders can be done in a batch
@@ -551,24 +567,26 @@ def test_batch_order():
                 Side.SELL,
                 0.001,
                 max_fees_percent,
-                price=float(prices.spotPrice),
+                price=spot,
             ),
-            # Trigger market order
+            # Trigger market order — fires when price drops to spot
             CreateOrder(
                 "BTC/USDT-P",
                 Side.SELL,
                 0.001,
                 max_fees_percent,
-                trigger_price=float(prices.spotPrice),
+                trigger_price=spot,
+                trigger_direction=TriggerDirection.LOW,
             ),
-            # Trigger limit order
+            # Trigger limit order — fires when price rises above ask
             CreateOrder(
                 "BTC/USDT-P",
                 Side.SELL,
                 0.001,
                 max_fees_percent,
-                price=float(prices.askPrice),
-                trigger_price=float(prices.askPrice) * 1.05,
+                price=ask,
+                trigger_price=ask_high,
+                trigger_direction=TriggerDirection.HIGH,
             ),
             # TWAP order
             CreateOrder(
@@ -582,13 +600,13 @@ def test_batch_order():
             CreateOrder(
                 "BTC/USDT-P", Side.BUY, 0.001, max_fees_percent, creation_deadline=2
             ),
-            # Limit order, only valid if placed within one seconds
+            # Limit order, only valid if placed within one second
             CreateOrder(
                 "BTC/USDT-P",
                 Side.BUY,
                 0.001,
                 max_fees_percent,
-                price=float(prices.spotPrice),
+                price=spot,
                 creation_deadline=1,
             ),
             # Trigger market order, only valid if placed within three seconds
@@ -597,7 +615,8 @@ def test_batch_order():
                 Side.BUY,
                 0.001,
                 max_fees_percent,
-                trigger_price=float(prices.askPrice),
+                trigger_price=ask,
+                trigger_direction=TriggerDirection.HIGH,
                 creation_deadline=3,
             ),
             # Trigger limit order, only valid if placed within five seconds
@@ -606,8 +625,9 @@ def test_batch_order():
                 Side.BUY,
                 0.001,
                 max_fees_percent,
-                price=float(prices.askPrice),
-                trigger_price=float(prices.askPrice),
+                price=ask,
+                trigger_price=ask,
+                trigger_direction=TriggerDirection.HIGH,
                 creation_deadline=5,
             ),
             # TWAP order only valid if placed within two seconds
@@ -626,9 +646,9 @@ def test_batch_order():
                 Side.BUY,
                 0.001,
                 max_fees_percent,
-                price=float(prices.askPrice),
+                price=ask,
             ),
-            # update trigger limit order
+            # Update trigger limit order
             # Need to fill all relevant optional parameters
             UpdateOrder(
                 trigger_limit_order_id,
@@ -636,10 +656,10 @@ def test_batch_order():
                 Side.ASK,
                 0.002,
                 max_fees_percent,
-                price=float(prices.askPrice),
-                trigger_price=float(prices.askPrice),
+                price=ask,
+                trigger_price=ask,
             ),
-            # update trigger market order
+            # Update trigger market order
             # Need to fill all relevant optional parameters
             UpdateOrder(
                 trigger_market_order_id,
@@ -647,7 +667,7 @@ def test_batch_order():
                 Side.ASK,
                 0.001,
                 max_fees_percent,
-                trigger_price=float(prices.askPrice),
+                trigger_price=ask,
             ),
             # Cancel order
             CancelOrder(order_id=limit_order_id),

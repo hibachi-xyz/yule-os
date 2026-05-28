@@ -6,6 +6,7 @@ from examples.example_tpsl import (
     example_tpsl_rest,
     example_tpsl_ws_client,
 )
+from examples.example_trigger_direction import example_trigger_direction
 from examples.example_ws_account import example_ws_account
 from examples.example_ws_market import example_ws_market
 from examples.example_ws_trade import example_ws_trade
@@ -43,3 +44,8 @@ async def test_example_ws_account():
 @pytest.mark.asyncio
 async def test_example_ws_trade():
     await example_ws_trade()
+
+
+@pytest.mark.asyncio
+async def test_example_trigger_direction():
+    example_trigger_direction()
