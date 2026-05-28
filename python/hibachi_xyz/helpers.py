@@ -455,22 +455,20 @@ def get_withdrawal_fee_for_amount(
 
 
 def absolute_creation_deadline(relative_creation_deadline: Decimal) -> int:
-    """Convert a relative creation deadline (in seconds) to an absolute timestamp.
+    """Convert a relative creation deadline (in seconds) to an absolute timestamp in microseconds.
 
     Note: This is based on wall time and can drift. Server-side uses NTP with
     chrony AWS Time Sync Service. If client time is significantly off from
     server time, this may not function as expected.
 
-    TODO: This should be able to return a float but API server currently can't handle that
-
     Args:
         relative_creation_deadline: Deadline in seconds from now
 
     Returns:
-        Unix timestamp as integer
+        Absolute Unix timestamp in microseconds
 
     """
-    return int(relative_creation_deadline + Decimal(time()))
+    return int((relative_creation_deadline + Decimal(time())) * 1_000_000)
 
 
 # ============================================================================
