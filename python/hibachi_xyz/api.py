@@ -624,7 +624,13 @@ class HibachiApiClient:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
-    def get_klines(self, symbol: str, interval: Interval) -> KlinesResponse:
+    def get_klines(
+        self,
+        symbol: str,
+        interval: Interval,
+        from_ms: int | None = None,
+        to_ms: int | None = None,
+    ) -> KlinesResponse:
         """Get candlestick (K-line) data for a trading symbol.
 
         Retrieves historical candlestick data at the specified time interval.
@@ -632,6 +638,8 @@ class HibachiApiClient:
         Args:
             symbol: The trading symbol (e.g., "BTC/USDT-P")
             interval: The time interval for candlesticks (e.g., Interval.ONE_MINUTE)
+            from_ms: Optional start time filter in milliseconds (Unix timestamp)
+            to_ms: Optional end time filter in milliseconds (Unix timestamp)
 
         Returns:
             KlinesResponse: List of candlestick data with OHLCV information
@@ -644,9 +652,12 @@ class HibachiApiClient:
             GET /market/data/klines
 
         """
-        response = self.__send_simple_request(
-            f"/market/data/klines?symbol={symbol}&interval={interval.value}"
-        )
+        url = f"/market/data/klines?symbol={symbol}&interval={interval.value}"
+        if from_ms is not None:
+            url += f"&fromMs={from_ms}"
+        if to_ms is not None:
+            url += f"&toMs={to_ms}"
+        response = self.__send_simple_request(url)
         try:
             result = KlinesResponse(
                 klines=[create_with(Kline, kline) for kline in response["klines"]]  # type: ignore

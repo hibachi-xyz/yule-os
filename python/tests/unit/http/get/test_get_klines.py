@@ -36,3 +36,29 @@ def test_get_klines(mock_http_client, test_data):
         assert kline.interval == payload_kline["interval"]
         assert kline.timestamp == payload_kline["timestamp"]
         assert kline.volumeNotional == payload_kline["volumeNotional"]
+
+
+@pytest.mark.parametrize("test_data", load_json_all_cases("response.klines"))
+def test_get_klines_with_time_range(mock_http_client, test_data):
+    payload, path = test_data
+    client, mock_http = mock_http_client
+
+    symbol = "ETH/USDT-P"
+    interval = Interval.ONE_HOUR
+    from_ms = 1700000000000
+    to_ms = 1700003600000
+
+    mock_http.stage_output(
+        MockSuccessfulOutput(
+            output=HttpResponse(status=200, body=payload),
+            call_validation=lambda call: call.function_name == "send_simple_request"
+            and call.arg_pack
+            == (
+                f"/market/data/klines?symbol={symbol}&interval={interval.value}&fromMs={from_ms}&toMs={to_ms}",
+            ),
+        )
+    )
+
+    klines_response = client.get_klines(symbol, interval, from_ms=from_ms, to_ms=to_ms)
+
+    assert len(klines_response.klines) == len(payload["klines"])
