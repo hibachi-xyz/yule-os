@@ -117,14 +117,14 @@ jobs:
       - run:
           name: Build SDK
           command: |
-            echo 'dry run publish'
-            # cd python
-            # poetry build
+            # echo 'dry run publish'
+            cd python
+            poetry build
       - run:
           name: Publish to PyPI
           command: |
-            # twine upload python/dist/* -u __token__ -p "$PYPI_TOKEN"
-            echo 'dry run publish'
+            twine upload python/dist/* -u __token__ -p "$PYPI_TOKEN"
+            # echo 'dry run publish'
 
 workflows:
   sdk-tests-and-deploy:
