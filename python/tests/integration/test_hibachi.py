@@ -393,104 +393,114 @@ def test_place_market_order():
     assert api_key != "your-api-key"
     assert private_key != "your-private"
 
+    exch_info = client.get_exchange_info()
+    btc_contract = next(
+        c for c in exch_info.futureContracts if c.symbol == "BTC/USDT-P"
+    )
+    btc_ticksize = btc_contract.tickSize
+
     # max_fees_percent is required for most actions related to orders, it must be at least as much as returned in the exchange_info
     max_fees_percent = 0.0005
 
-    # Market buy order OrderSide.BUY and OrderSide.BID are the same, both can be used
-    # On a successful order placement the call returns the nonce and the order_id of the created order
+    try:
+        # Market buy order OrderSide.BUY and OrderSide.BID are the same, both can be used
+        # On a successful order placement the call returns the nonce and the order_id of the created order
 
-    (nonce, order_id) = client.place_market_order(
-        "BTC/USDT-P", 0.0001, Side.BUY, max_fees_percent
-    )
-    # Market sell order OrderSide.SELL and OrderSide.ASK are the same, both can be used
-    (nonce, order_id) = client.place_market_order(
-        "BTC/USDT-P", 0.0001, Side.SELL, max_fees_percent
-    )
+        (nonce, order_id) = client.place_market_order(
+            "BTC/USDT-P", 0.0001, Side.BUY, max_fees_percent
+        )
+        # Market sell order OrderSide.SELL and OrderSide.ASK are the same, both can be used
+        (nonce, order_id) = client.place_market_order(
+            "BTC/USDT-P", 0.0001, Side.SELL, max_fees_percent
+        )
 
-    # Order creation support an optional creation deadline parameter, the order will be rejected if cannot be placed within deadline seconds
-    (nonce, order_id) = client.place_market_order(
-        "BTC/USDT-P", 0.0001, Side.BID, max_fees_percent, creation_deadline=2
-    )
+        # Order creation support an optional creation deadline parameter, the order will be rejected if cannot be placed within deadline seconds
+        (nonce, order_id) = client.place_market_order(
+            "BTC/USDT-P", 0.0001, Side.BID, max_fees_percent, creation_deadline=2
+        )
 
-    # A more advanced order type is the trigger order, the actual order is placed only when the market price touches or crosses the trigger price
-    (nonce, order_id) = client.place_market_order(
-        "BTC/USDT-P",
-        0.0001,
-        Side.ASK,
-        max_fees_percent,
-        trigger_price=1_000_000,
-        trigger_direction=TriggerDirection.HIGH,
-    )
+        # A more advanced order type is the trigger order, the actual order is placed only when the market price touches or crosses the trigger price
+        (nonce, order_id) = client.place_market_order(
+            "BTC/USDT-P",
+            0.0001,
+            Side.ASK,
+            max_fees_percent,
+            trigger_price=1_000_000,
+            trigger_direction=TriggerDirection.HIGH,
+        )
 
-    # Market orders with considerable quantity can be automatically spread out in time by smaller, scheduled orders
-    # The first parameter is duration of the spread in minutes
-    twap_config = TWAPConfig(2, TWAPQuantityMode.FIXED)
-    (nonce, order_id) = client.place_market_order(
-        "SOL/USDT-P", 1, Side.BID, max_fees_percent, twap_config=twap_config
-    )
+        # Market orders with considerable quantity can be automatically spread out in time by smaller, scheduled orders
+        # The first parameter is duration of the spread in minutes
+        twap_config = TWAPConfig(2, TWAPQuantityMode.FIXED)
+        (nonce, order_id) = client.place_market_order(
+            "SOL/USDT-P", 1, Side.BID, max_fees_percent, twap_config=twap_config
+        )
 
-    # Either the order_id or the nonce can be used to query the order details
-    client.get_order_details(order_id=order_id)
-    client.get_order_details(nonce=nonce)
+        # Either the order_id or the nonce can be used to query the order details
+        client.get_order_details(order_id=order_id)
+        client.get_order_details(nonce=nonce)
 
-    # Get current price of the market
-    prices = client.get_prices("BTC/USDT-P")
+        # Get current price of the market
+        btc_raw_price = float(client.get_prices("BTC/USDT-P").markPrice)
+        btc_price = round_price_to_tick(btc_raw_price, btc_ticksize)
+        btc_trigger_price = round_price_to_tick(btc_raw_price * 1.05, btc_ticksize)
+        btc_update_price1 = round_price_to_tick(btc_raw_price * 1.025, btc_ticksize)
+        btc_update_price2 = round_price_to_tick(btc_raw_price * 1.075, btc_ticksize)
+        btc_trigger_price2 = round_price_to_tick(btc_raw_price * 1.08, btc_ticksize)
 
-    # Limit orders can be placed similarly to market orders
-    (nonce, order_id) = client.place_limit_order(
-        "BTC/USDT-P", 0.0001, float(prices.markPrice), Side.BUY, max_fees_percent
-    )
-    (nonce, order_id) = client.place_limit_order(
-        "BTC/USDT-P", 0.0001, float(prices.markPrice), Side.SELL, max_fees_percent
-    )
-    (nonce, order_id) = client.place_limit_order(
-        "BTC/USDT-P",
-        0.0001,
-        float(prices.markPrice),
-        Side.BID,
-        max_fees_percent,
-        creation_deadline=2,
-    )
-    (nonce, order_id) = client.place_limit_order(
-        "BTC/USDT-P",
-        0.0001,
-        float(prices.markPrice),
-        Side.ASK,
-        max_fees_percent,
-        trigger_price=float(prices.markPrice) * 1.05,
-    )
+        # Limit orders can be placed similarly to market orders
+        (nonce, order_id) = client.place_limit_order(
+            "BTC/USDT-P", 0.0001, btc_price, Side.BUY, max_fees_percent
+        )
+        (nonce, order_id) = client.place_limit_order(
+            "BTC/USDT-P", 0.0001, btc_price, Side.SELL, max_fees_percent
+        )
+        (nonce, order_id) = client.place_limit_order(
+            "BTC/USDT-P",
+            0.0001,
+            btc_price,
+            Side.BID,
+            max_fees_percent,
+            creation_deadline=2,
+        )
+        (nonce, order_id) = client.place_limit_order(
+            "BTC/USDT-P",
+            0.0001,
+            btc_price,
+            Side.ASK,
+            max_fees_percent,
+            trigger_price=btc_trigger_price,
+            trigger_direction=TriggerDirection.HIGH,
+        )
 
-    # Pending or partially filled orders can be updated using the order_id
-    # Quantity, price and trigger price can be updated separately or any number of them at once
-    # The single order update request is convenient, but does two requests behind the curtains
-    # First it will download the order details of the order to be updated to get all data to create a correct signature
-    client.get_order_details(order_id=order_id)
+        # Pending or partially filled orders can be updated using the order_id
+        # Quantity, price and trigger price can be updated separately or any number of them at once
+        # The single order update request is convenient, but does two requests behind the curtains
+        # First it will download the order details of the order to be updated to get all data to create a correct signature
+        client.get_order_details(order_id=order_id)
 
-    client.update_order(order_id, max_fees_percent, quantity=0.002)
-    client.get_order_details(order_id=order_id)
-    client.update_order(
-        order_id, max_fees_percent, price=float(prices.markPrice) * 1.025
-    )
-    client.get_order_details(order_id=order_id)
+        client.update_order(order_id, max_fees_percent, quantity=0.002)
+        client.get_order_details(order_id=order_id)
+        client.update_order(order_id, max_fees_percent, price=btc_update_price1)
+        client.get_order_details(order_id=order_id)
 
-    client.update_order(
-        order_id, max_fees_percent, trigger_price=float(prices.markPrice) * 1.05
-    )
-    client.get_order_details(order_id=order_id)
+        client.update_order(order_id, max_fees_percent, trigger_price=btc_trigger_price)
+        client.get_order_details(order_id=order_id)
 
-    client.update_order(
-        order_id,
-        max_fees_percent,
-        quantity=0.001,
-        price=float(prices.markPrice) * 1.075,
-        trigger_price=float(prices.markPrice) * 1.08,
-    )
-    client.get_order_details(order_id=order_id)
+        client.update_order(
+            order_id,
+            max_fees_percent,
+            quantity=0.001,
+            price=btc_update_price2,
+            trigger_price=btc_trigger_price2,
+        )
+        client.get_order_details(order_id=order_id)
 
-    # Orders can be cancelled one by one
-    client.cancel_order(order_id=order_id)
-    # Or all at once
-    client.cancel_all_orders()
+        # Orders can be cancelled one by one
+        client.cancel_order(order_id=order_id)
+    finally:
+        # Always clean up so leftover orders don't break subsequent tests
+        client.cancel_all_orders()
 
 
 def test_batch_order():
@@ -810,13 +820,15 @@ def test_cancel_order():
     start_order_count = len(client.get_pending_orders().orders)
 
     current_price = client.get_prices("BTC/USDT-P")
+    tick = client.get_tick_size("BTC/USDT-P")
+    low_bid = round_price_to_tick(float(current_price.bidPrice) * 0.95, tick)
 
     (nonce, order_id) = client.place_limit_order(
         symbol="BTC/USDT-P",
         quantity=0.0001,
-        side=Side.ASK,
+        side=Side.BID,
         max_fees_percent=0.005,
-        price=float(current_price.askPrice) * 10,
+        price=low_bid,
     )
     assert len(client.get_pending_orders().orders) == start_order_count + 1
     client.cancel_order(order_id=order_id, nonce=nonce)
@@ -825,9 +837,9 @@ def test_cancel_order():
     (nonce, order_id) = client.place_limit_order(
         symbol="BTC/USDT-P",
         quantity=0.0001,
-        side=Side.ASK,
+        side=Side.BID,
         max_fees_percent=0.005,
-        price=float(current_price.askPrice) * 10,
+        price=low_bid,
     )
     assert len(client.get_pending_orders().orders) == start_order_count + 1
     client.cancel_order(order_id=order_id)
@@ -836,16 +848,15 @@ def test_cancel_order():
     (nonce, order_id) = client.place_limit_order(
         symbol="BTC/USDT-P",
         quantity=0.0001,
-        side=Side.ASK,
+        side=Side.BID,
         max_fees_percent=0.005,
-        price=float(current_price.askPrice) * 10,
+        price=low_bid,
     )
     assert len(client.get_pending_orders().orders) == start_order_count + 1
     client.cancel_order(nonce=nonce)
     assert len(client.get_pending_orders().orders) == start_order_count
 
     for order in client.get_pending_orders().orders:
-        # delete order
         client.cancel_order(order_id=int(order.orderId))
 
 
@@ -860,15 +871,16 @@ def test_cancel_all_orders():
     assert client is not None
 
     current_price = client.get_prices("BTC/USDT-P")
+    tick = client.get_tick_size("BTC/USDT-P")
 
     start_order_count = len(client.get_pending_orders().orders)
 
     (nonce, order_id) = client.place_limit_order(
         symbol="BTC/USDT-P",
         quantity=0.0001,
-        side=Side.ASK,
+        side=Side.BID,
         max_fees_percent=0.005,
-        price=float(current_price.askPrice) * 10,
+        price=round_price_to_tick(float(current_price.bidPrice) * 0.95, tick),
     )
 
     assert nonce is not None
