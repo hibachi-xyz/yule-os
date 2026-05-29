@@ -208,7 +208,7 @@ def deserialize_response(response_body: bytes, url: str) -> Json:
 
     """
     if not response_body:
-        return []
+        return {}
     try:
         return orjson.loads(response_body)  # type: ignore
     except Exception as e:
