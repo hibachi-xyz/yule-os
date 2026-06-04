@@ -1,0 +1,37 @@
+[
+    {
+        "accountId": 1,
+        "availableQuantity": "0.001",
+        "orderId": "100001",
+        "orderType": "MARKET",
+        "side": "BUY",
+        "status": "PLACED",
+        "symbol": "BTC/USDT-P",
+        "totalQuantity": "0.001",
+        "triggerPrice": "85000.00",
+        "triggerDirection": "HIGH"
+    },
+    {
+        "accountId": 1,
+        "availableQuantity": "0.002",
+        "orderId": "100002",
+        "orderType": "MARKET",
+        "side": "SELL",
+        "status": "PLACED",
+        "symbol": "ETH/USDT-P",
+        "totalQuantity": "0.002",
+        "triggerPrice": "2000.00",
+        "triggerDirection": "LOW"
+    },
+    {
+        "accountId": 1,
+        "availableQuantity": "0.005",
+        "orderId": "100003",
+        "orderType": "LIMIT",
+        "side": "BUY",
+        "status": "PLACED",
+        "symbol": "BTC/USDT-P",
+        "price": "83000.00",
+        "totalQuantity": "0.005"
+    }
+]
