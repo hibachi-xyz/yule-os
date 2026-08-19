@@ -2223,7 +2223,7 @@ class HibachiApiClient:
             request["orderId"] = str(order_id)
         if trigger_price is not None:
             request["updatedTriggerPrice"] = full_precision_string(trigger_price)
-            request["trigger_price"] = full_precision_string(trigger_price)
+            request["triggerPrice"] = full_precision_string(trigger_price)
         if creation_deadline is not None:
             request["creationDeadline"] = absolute_creation_deadline(creation_deadline)
         if order_flags is not None:
