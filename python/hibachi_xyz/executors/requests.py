@@ -133,7 +133,8 @@ class RequestsHttpExecutor(HttpExecutor):
             raise
         except requests.Timeout as e:
             raise TransportTimeoutError(
-                f"{method} request to {url} timed out", timeout_seconds=self.timeout_seconds
+                f"{method} request to {url} timed out",
+                timeout_seconds=self.timeout_seconds,
             ) from e
         except requests.ConnectionError as e:
             raise HttpConnectionError(f"Failed to connect to {url}", url=url) from e

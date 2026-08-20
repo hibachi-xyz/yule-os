@@ -19,7 +19,9 @@ def test_simple_request_passes_configured_timeout() -> None:
 
     request.assert_called_once_with(
         "https://data.example/health",
-        headers={"Hibachi-Client": request.call_args.kwargs["headers"]["Hibachi-Client"]},
+        headers={
+            "Hibachi-Client": request.call_args.kwargs["headers"]["Hibachi-Client"]
+        },
         timeout=7.5,
     )
 
@@ -41,7 +43,9 @@ def test_authorized_request_passes_default_timeout() -> None:
 @pytest.mark.parametrize("method", ["send_simple_request", "send_authorized_request"])
 def test_requests_timeout_is_translated(method: str) -> None:
     executor = RequestsHttpExecutor(timeout_seconds=3.0)
-    patch_target = "requests.get" if method == "send_simple_request" else "requests.request"
+    patch_target = (
+        "requests.get" if method == "send_simple_request" else "requests.request"
+    )
 
     with patch(patch_target, side_effect=requests.Timeout("timed out")):
         with pytest.raises(TransportTimeoutError) as raised:
