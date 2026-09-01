@@ -81,7 +81,7 @@ class HibachiWSAccountClient:
 
         """
         if self._websocket is None:
-            raise ValidationError from ValueError(
+            raise ValidationError(
                 "No existing ws connection. Call `connect` first"
             )
         return self._websocket

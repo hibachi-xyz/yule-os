@@ -8,11 +8,12 @@ and order operations.
 import hmac
 import logging
 from dataclasses import asdict
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from hashlib import sha256
 from time import time_ns
 from types import NoneType
 from typing import Any, Dict, cast
+from urllib.parse import quote
 
 import eth_keys.datatypes
 
@@ -230,6 +231,182 @@ def price_to_bytes(price: HibachiNumericInput, contract: FutureContract) -> byte
     ).to_bytes(8, "big")
 
 
+# ============================================================================
+# SIGNING SCALE FACTORS
+# ============================================================================
+#
+# Amounts embedded in signed capital payloads are fixed-point integers. The
+# exponents below are the scale factors the exchange applies to each field.
+# They are named rather than inlined so that the wire format is stated once and
+# can be reviewed independently of the code that serializes it.
+
+# Settlement-currency amounts (USDT quantities and absolute fee amounts) are
+# scaled by 10^6, matching USDT's six settlement decimals.
+SETTLEMENT_SCALE: Decimal = pow(Decimal(10), 6)
+
+# Fee *percentages* in order payloads are scaled by 10^8; see
+# __create_or_update_order_payload.
+FEE_PERCENT_SCALE: Decimal = pow(Decimal(10), 8)
+
+# Length of an EVM address in bytes (20 bytes / 40 hex characters).
+EVM_ADDRESS_BYTE_LENGTH: int = 20
+
+
+def _strip_hex_prefix(value: str) -> str:
+    """Remove a leading ``0x``/``0X`` prefix from a hex string.
+
+    ``str.replace("0x", "")`` was previously used for this, which removes *every*
+    occurrence anywhere in the string rather than just the prefix.
+
+    Args:
+        value: The hex string, with or without a ``0x`` prefix
+
+    Returns:
+        str: The string without its leading hex prefix
+
+    """
+    if value[:2] in ("0x", "0X"):
+        return value[2:]
+    return value
+
+
+def _hex_to_bytes(value: str, field_name: str, expected_length: int | None) -> bytes:
+    """Decode a hex string to bytes, validating its shape and length.
+
+    ``bytes.fromhex`` silently accepts any even-length hex string. Because the
+    decoded bytes are concatenated into a signature payload, a short or
+    malformed value shifts every following field of the digest instead of being
+    rejected, producing a signature over a different message than intended.
+
+    Args:
+        value: The hex-encoded value, with or without a ``0x`` prefix
+        field_name: Human-readable field name used in error messages
+        expected_length: Required length in bytes, or None to accept any length
+
+    Returns:
+        bytes: The decoded bytes
+
+    Raises:
+        ValidationError: If the value is not valid hex or has the wrong length
+
+    """
+    stripped = _strip_hex_prefix(value.strip())
+    try:
+        decoded = bytes.fromhex(stripped)
+    except ValueError as e:
+        raise ValidationError(
+            f"{field_name} is not a valid hex string: {e}"
+        ) from e
+    if expected_length is not None and len(decoded) != expected_length:
+        raise ValidationError(
+            f"{field_name} must be {expected_length} bytes "
+            f"({expected_length * 2} hex characters), got {len(decoded)} bytes"
+        )
+    if not decoded:
+        # An empty value decodes cleanly but contributes nothing to the digest,
+        # so it would silently produce a signature over a truncated message.
+        raise ValidationError(f"{field_name} must not be empty")
+    return decoded
+
+
+def _query_value(value: object) -> str:
+    """Percent-encode a value for safe interpolation into a query string.
+
+    Request paths in this module are assembled with f-strings. Without encoding,
+    a caller-supplied value containing ``&``, ``=``, ``?`` or ``#`` can append or
+    overwrite query parameters - for example a symbol of
+    ``"BTC/USDT-P&accountId=999"`` would inject an ``accountId`` parameter into an
+    otherwise well-formed request.
+
+    ``/`` is intentionally left unencoded so that existing symbol values such as
+    ``"BTC/USDT-P"`` are transmitted byte-for-byte as before; a literal ``/`` in a
+    query value is unambiguous and cannot be used to inject a parameter.
+
+    Args:
+        value: The value to encode; converted with ``str`` first
+
+    Returns:
+        str: The percent-encoded value
+
+    """
+    return quote(str(value), safe="/")
+
+
+def _side_to_bytes(side: Side) -> bytes:
+    """Encode an order side as the 4-byte big-endian value the exchange signs.
+
+    ``Side`` carries the aliases ``BUY``/``SELL`` in addition to ``BID``/``ASK``,
+    so the aliases are normalized here and any unrecognized value is rejected
+    rather than defaulting to a side the caller did not ask for.
+
+    Args:
+        side: The order side to encode
+
+    Returns:
+        bytes: 4-byte big-endian encoding (ASK = 0, BID = 1)
+
+    Raises:
+        ValidationError: If the side is not one of BID/ASK/BUY/SELL
+
+    """
+    if side in (Side.ASK, Side.SELL):
+        return (0).to_bytes(4, "big")
+    if side in (Side.BID, Side.BUY):
+        return (1).to_bytes(4, "big")
+    raise ValidationError(f"Unsupported order side: {side!r}")
+
+
+def _scaled_amount_to_bytes(
+    amount: HibachiNumericInput,
+    scale: Decimal,
+    num_bytes: int,
+    field_name: str,
+) -> bytes:
+    """Convert a decimal amount to a fixed-point big-endian integer.
+
+    The conversion is performed entirely in ``Decimal``. Routing the value
+    through ``float`` first (the previous behaviour) loses precision: for
+    example ``float("2.01") * 1e6`` evaluates to ``2009999.9999999998``, so
+    ``int()`` truncated the signed amount one unit below the plaintext amount
+    sent alongside it in the request body, guaranteeing a signature mismatch.
+
+    A value that is not an exact multiple of the scale factor is rejected rather
+    than truncated, because the unscaled value is also transmitted as a
+    full-precision string: silently signing a truncated amount would sign a
+    different message than the one being submitted.
+
+    Args:
+        amount: The amount to encode
+        scale: The fixed-point scale factor to multiply by
+        num_bytes: Width of the resulting big-endian integer, in bytes
+        field_name: Human-readable field name used in error messages
+
+    Returns:
+        bytes: Big-endian representation of the scaled integer
+
+    Raises:
+        ValidationError: If the amount is negative, carries more precision than
+            the scale factor can represent, or does not fit in ``num_bytes``
+
+    """
+    value = numeric_to_decimal(amount)
+    if value < 0:
+        raise ValidationError(f"{field_name} must not be negative, got {value}")
+
+    scaled = value * scale
+    if scaled != scaled.to_integral_value():
+        raise ValidationError(
+            f"{field_name} {value} carries more precision than the exchange "
+            f"encodes for this field (scale factor {scale}); "
+            "round the value before submitting it"
+        )
+
+    try:
+        return int(scaled).to_bytes(num_bytes, "big")
+    except OverflowError as e:
+        raise ValidationError(f"{field_name} {value} is out of range: {e}") from e
+
+
 class HibachiApiClient:
     """Hibachi API client for trading operations.
 
@@ -366,7 +543,7 @@ class HibachiApiClient:
         elif isinstance(_account_id, (int, NoneType)):
             self._account_id = _account_id
         else:
-            raise ValidationError from TypeError(
+            raise ValidationError(
                 f"Unexpected type for account_id {type(account_id)}"
             )
 
@@ -382,7 +559,7 @@ class HibachiApiClient:
         """
         _api_key = cast(Any, api_key)
         if not isinstance(_api_key, (str, NoneType)):
-            raise ValidationError from TypeError(
+            raise ValidationError(
                 f"Unexpected type for api_key {type(api_key)}"
             )
 
@@ -395,18 +572,44 @@ class HibachiApiClient:
             - Ethereum private key (hex string with or without 0x prefix) for wallet accounts
             - HMAC key (non-hex string) for web accounts
 
+        A key is routed to ECDSA signing only when it carries the ``0x`` prefix.
+        A 64-character hex string supplied *without* the prefix is still treated
+        as an HMAC secret - changing that would silently switch signing modes
+        based on a heuristic - but a warning is emitted, because such a key is
+        almost certainly an Ethereum key that is missing its prefix and would
+        otherwise produce valid-looking signatures the exchange always rejects.
+
         Args:
             private_key: The private key as a hex string (with/without 0x) or HMAC key
 
+        Raises:
+            ValidationError: If the key is empty or is a malformed hex key
+
         """
-        if private_key.startswith("0x"):
-            private_key = private_key[2:]
+        if not private_key:
+            raise ValidationError("private_key must not be empty")
+
+        if private_key[:2] in ("0x", "0X"):
+            candidate = private_key[2:]
             try:
-                private_key_bytes = bytes.fromhex(private_key)
+                private_key_bytes = bytes.fromhex(candidate)
             except ValueError as e:
                 raise ValidationError(f"Invalid hex private key: {e}") from e
+            if len(private_key_bytes) != 32:
+                raise ValidationError(
+                    "Ethereum private key must be 32 bytes "
+                    f"(64 hex characters), got {len(private_key_bytes)} bytes"
+                )
             self._private_key = eth_keys.datatypes.PrivateKey(private_key_bytes)
         else:
+            if len(private_key) == 64 and all(
+                c in "0123456789abcdefABCDEF" for c in private_key
+            ):
+                log.warning(
+                    "private_key looks like a 32-byte hex Ethereum key but has no "
+                    "'0x' prefix, so it is being used as an HMAC secret. Add the "
+                    "'0x' prefix if this is a wallet-account key."
+                )
             self._private_key_hmac = private_key
 
     """ Market API endpoints, can be called without having an account """
@@ -466,7 +669,7 @@ class HibachiApiClient:
                 for window in exchange_info["maintenanceWindow"]  # type: ignore
             ]
             status = str(exchange_info["status"])
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(
                 f"Received invalid response {exchange_info=}"
             ) from e
@@ -525,7 +728,7 @@ class HibachiApiClient:
                     for tt in market_inventory["tradingTiers"]  # type: ignore
                 ],
             )
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(
                 f"Received invalid response {market_inventory=}"
             ) from e
@@ -551,14 +754,14 @@ class HibachiApiClient:
             GET /market/data/prices
 
         """
-        response = self.__send_simple_request(f"/market/data/prices?symbol={symbol}")
+        response = self.__send_simple_request(f"/market/data/prices?symbol={_query_value(symbol)}")
         try:
             response["fundingRateEstimation"] = create_with(  # type: ignore
                 FundingRateEstimation,
                 response["fundingRateEstimation"],  # type: ignore
             )
             result = create_with(PriceResponse, response)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -581,10 +784,10 @@ class HibachiApiClient:
             GET /market/data/stats
 
         """
-        response = self.__send_simple_request(f"/market/data/stats?symbol={symbol}")
+        response = self.__send_simple_request(f"/market/data/stats?symbol={_query_value(symbol)}")
         try:
             result = create_with(StatsResponse, response)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -607,7 +810,7 @@ class HibachiApiClient:
             GET /market/data/trades
 
         """
-        response = self.__send_simple_request(f"/market/data/trades?symbol={symbol}")
+        response = self.__send_simple_request(f"/market/data/trades?symbol={_query_value(symbol)}")
         try:
             result = TradesResponse(
                 trades=[
@@ -620,7 +823,7 @@ class HibachiApiClient:
                     for t in response["trades"]  # type: ignore
                 ]
             )
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -652,7 +855,10 @@ class HibachiApiClient:
             GET /market/data/klines
 
         """
-        url = f"/market/data/klines?symbol={symbol}&interval={interval.value}"
+        url = (
+            f"/market/data/klines?symbol={_query_value(symbol)}"
+            f"&interval={_query_value(interval.value)}"
+        )
         if from_ms is not None:
             url += f"&fromMs={from_ms}"
         if to_ms is not None:
@@ -662,7 +868,7 @@ class HibachiApiClient:
             result = KlinesResponse(
                 klines=[create_with(Kline, kline) for kline in response["klines"]]  # type: ignore
             )
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -686,11 +892,11 @@ class HibachiApiClient:
 
         """
         response = self.__send_simple_request(
-            f"/market/data/open-interest?symbol={symbol}"
+            f"/market/data/open-interest?symbol={_query_value(symbol)}"
         )
         try:
             result = create_with(OpenInterestResponse, response)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -730,7 +936,8 @@ class HibachiApiClient:
             )
 
         response = self.__send_simple_request(
-            f"/market/data/orderbook?symbol={symbol}&depth={depth}&granularity={granularity}"
+            f"/market/data/orderbook?symbol={_query_value(symbol)}"
+            f"&depth={_query_value(depth)}&granularity={_query_value(granularity)}"
         )
 
         try:
@@ -744,7 +951,7 @@ class HibachiApiClient:
             ]
 
             result = OrderBook(ask=ask_levels, bid=bid_levels)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
 
         return result
@@ -776,11 +983,11 @@ class HibachiApiClient:
 
         """
         response = self.__send_authorized_request(
-            "GET", f"/capital/balance?accountId={self.account_id}"
+            "GET", f"/capital/balance?accountId={_query_value(self.account_id)}"
         )
         try:
             result = create_with(CapitalBalance, response)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -806,7 +1013,7 @@ class HibachiApiClient:
 
         """
         response = self.__send_authorized_request(
-            "GET", f"/capital/history?accountId={self.account_id}"
+            "GET", f"/capital/history?accountId={_query_value(self.account_id)}"
         )
 
         try:
@@ -816,7 +1023,7 @@ class HibachiApiClient:
                     for tx in response["transactions"]  # type: ignore
                 ]
             )
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
 
         return result
@@ -869,7 +1076,7 @@ class HibachiApiClient:
         )
         try:
             result = create_with(WithdrawResponse, response)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -906,7 +1113,7 @@ class HibachiApiClient:
             accountId=self.account_id,
             coin=coin,
             nonce=nonce,
-            dstPublicKey=dstPublicKey.replace("0x", ""),
+            dstPublicKey=_strip_hex_prefix(dstPublicKey.strip()),
             fees=max_fees,
             quantity=quantity,
             signature=self.__sign_transfer_payload(
@@ -920,7 +1127,7 @@ class HibachiApiClient:
 
         try:
             result = create_with(TransferResponse, response)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -944,11 +1151,12 @@ class HibachiApiClient:
         """
         response = self.__send_authorized_request(
             "GET",
-            f"/capital/deposit-info?accountId={self.account_id}&publicKey={public_key}",
+            f"/capital/deposit-info?accountId={_query_value(self.account_id)}"
+            f"&publicKey={_query_value(public_key)}",
         )
         try:
             result = create_with(DepositInfo, response)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -969,22 +1177,30 @@ class HibachiApiClient:
         Returns:
             str: The hex-encoded signature for the withdrawal request
 
+        Raises:
+            ValidationError: If the amount, fee, or destination address is
+                malformed or out of range
+
         """
         asset_id = self.__get_asset_id(coin)
         # Create payload bytes
         asset_id_bytes = asset_id.to_bytes(4, "big")
-        try:
-            quantity_bytes = int(float(quantity) * 1e6).to_bytes(
-                8, "big"
-            )  # Assuming 6 decimals for USDT
-            max_fees_bytes = int(float(max_fees) * 1e6).to_bytes(
-                8, "big"
-            )  # Assuming 6 decimals for USDT
-            address_bytes = bytes.fromhex(withdraw_address.replace("0x", ""))
-        except ValueError as e:
-            raise ValidationError(f"Invalid withdrawal parameter format: {e}") from e
-        except OverflowError as e:
-            raise ValidationError(f"Withdrawal value out of range: {e}") from e
+
+        # Quantity and fees are settlement-currency amounts, scaled by 10^6.
+        # Both are encoded exactly in Decimal - see _scaled_amount_to_bytes.
+        quantity_bytes = _scaled_amount_to_bytes(
+            quantity, SETTLEMENT_SCALE, 8, "Withdrawal quantity"
+        )
+        max_fees_bytes = _scaled_amount_to_bytes(
+            max_fees, SETTLEMENT_SCALE, 8, "Withdrawal maxFees"
+        )
+
+        # The destination address is the last field of the digest, so an
+        # incorrectly sized value would previously shorten or lengthen the signed
+        # message without any error. Require exactly 20 bytes.
+        address_bytes = _hex_to_bytes(
+            withdraw_address, "Withdrawal address", EVM_ADDRESS_BYTE_LENGTH
+        )
 
         # Combine payload
         payload = asset_id_bytes + quantity_bytes + max_fees_bytes + address_bytes
@@ -1012,6 +1228,10 @@ class HibachiApiClient:
         Returns:
             str: The hex-encoded signature
 
+        Raises:
+            ValidationError: If the amount, fee, or destination public key is
+                malformed or out of range
+
         """
         quantity = numeric_to_decimal(quantity)
         max_fees_percent = numeric_to_decimal(max_fees_percent)
@@ -1019,16 +1239,47 @@ class HibachiApiClient:
         # Create payload bytes
         nonce_bytes = nonce.to_bytes(8, "big")
         asset_id_bytes = asset_id.to_bytes(4, "big")
+
+        # Quantity is a settlement-currency amount, scaled by 10^6.
+        quantity_bytes = _scaled_amount_to_bytes(
+            quantity, SETTLEMENT_SCALE, 8, "Transfer quantity"
+        )
+
+        # The fee field is encoded with NO scale factor, preserving the wire
+        # format this SDK has always produced. Only the float arithmetic is
+        # removed here; the value is truncated toward zero in exact Decimal
+        # arithmetic, which reproduces the previous int(float(...)) result
+        # bit-for-bit without the float rounding error.
+        #
+        # KNOWN DISCREPANCY - deliberately NOT changed in this commit:
+        # because the scale factor is 1, any fractional fee percent (e.g. 0.5 or
+        # 0.0045) is signed as 0. The sibling JavaScript SDK scales transfer fees
+        # by 10^8 (FEE_PERCENT_SCALE below), which suggests this field should be
+        # scaled too. Changing the scale factor alters the signed wire format, so
+        # it must be confirmed against the server specification first - doing it
+        # on inference would break signatures against the live exchange. A
+        # warning is emitted so the truncation is at least observable.
+        if max_fees_percent != max_fees_percent.to_integral_value(rounding=ROUND_DOWN):
+            log.warning(
+                "Transfer fee %s is signed as %s: the transfer fee field is "
+                "encoded without a scale factor. Verify the expected scale "
+                "factor against the exchange specification.",
+                max_fees_percent,
+                int(max_fees_percent.to_integral_value(rounding=ROUND_DOWN)),
+            )
         try:
-            quantity_bytes = int(float(quantity) * 1e6).to_bytes(
-                8, "big"
-            )  # Assuming 6 decimals for USDT
-            max_fees_bytes = int(float(max_fees_percent)).to_bytes(8, "big")
-            address_bytes = bytes.fromhex(dst_account_public_key.replace("0x", ""))
-        except ValueError as e:
-            raise ValidationError(f"Invalid transfer parameter format: {e}") from e
+            max_fees_bytes = int(
+                max_fees_percent.to_integral_value(rounding=ROUND_DOWN)
+            ).to_bytes(8, "big")
         except OverflowError as e:
-            raise ValidationError(f"Transfer value out of range: {e}") from e
+            raise ValidationError(f"Transfer fee out of range: {e}") from e
+
+        # The destination account public key length is not fixed by this SDK, but
+        # it must be well-formed, non-empty hex: it is concatenated into the
+        # digest, so a malformed value would shift the trailing fee field.
+        address_bytes = _hex_to_bytes(
+            dst_account_public_key, "Transfer destination public key", None
+        )
 
         # Combine payload
         payload = (
@@ -1069,7 +1320,7 @@ class HibachiApiClient:
 
         """
         response = self.__send_authorized_request(
-            "GET", f"/trade/account/info?accountId={self.account_id}"
+            "GET", f"/trade/account/info?accountId={_query_value(self.account_id)}"
         )
 
         try:
@@ -1093,7 +1344,7 @@ class HibachiApiClient:
                 tradeMakerFeeRate=response["tradeMakerFeeRate"],  # type: ignore
                 tradeTakerFeeRate=response["tradeTakerFeeRate"],  # type: ignore
             )
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
 
         return result
@@ -1120,12 +1371,12 @@ class HibachiApiClient:
 
         """
         response = self.__send_authorized_request(
-            "GET", f"/trade/account/trades?accountId={self.account_id}"
+            "GET", f"/trade/account/trades?accountId={_query_value(self.account_id)}"
         )
         try:
             trades = [create_with(AccountTrade, trade) for trade in response["trades"]]  # type: ignore
             result = AccountTradesResponse(trades=trades)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -1152,7 +1403,7 @@ class HibachiApiClient:
 
         """
         response = self.__send_authorized_request(
-            "GET", f"/trade/account/settlements_history?accountId={self.account_id}"
+            "GET", f"/trade/account/settlements_history?accountId={_query_value(self.account_id)}"
         )
         try:
             settlements = [
@@ -1160,7 +1411,7 @@ class HibachiApiClient:
                 for settlement in response["settlements"]  # type: ignore
             ]
             result = SettlementsResponse(settlements=settlements)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -1187,12 +1438,12 @@ class HibachiApiClient:
 
         """
         response = self.__send_authorized_request(
-            "GET", f"/trade/orders?accountId={self.account_id}"
+            "GET", f"/trade/orders?accountId={_query_value(self.account_id)}"
         )
         try:
             orders = [create_with(Order, order_data) for order_data in response]  # type: ignore
             result = PendingOrdersResponse(orders=orders)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
         return result
 
@@ -1233,12 +1484,12 @@ class HibachiApiClient:
             f"orderId={order_id}" if order_id is not None else f"nonce={nonce}"
         )
         response = self.__send_authorized_request(
-            "GET", f"/trade/order?accountId={self.account_id}&{order_selector}"
+            "GET", f"/trade/order?accountId={_query_value(self.account_id)}&{order_selector}"
         )
 
         try:
             result = create_with(Order, response, implicit_null=True)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e
 
         return result
@@ -1355,7 +1606,7 @@ class HibachiApiClient:
             order_id = int(response["orderId"])  # type: ignore
             return (nonce, order_id)
 
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid {response=}") from e
 
     def place_limit_order(
@@ -1461,7 +1712,7 @@ class HibachiApiClient:
             order_id = int(response["orderId"])  # type: ignore
             return (nonce, order_id)
 
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid {response=}") from e
 
     def _place_parent_with_tpsl(
@@ -1549,7 +1800,7 @@ class HibachiApiClient:
                 raise DeserializationError(
                     f"Received invalid response, {parent_order=} of type {type(parent_order)}"
                 )
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {result=}") from e
 
     def update_order(
@@ -1653,7 +1904,7 @@ class HibachiApiClient:
 
         # Infer missing fields from order object
         if order.orderType == OrderType.MARKET and price is not None:
-            raise ValidationError from ValueError(
+            raise ValidationError(
                 "Can not update price for a market order"
             )
 
@@ -1662,7 +1913,7 @@ class HibachiApiClient:
             price = numeric_to_decimal(order.price)
 
         if order.triggerPrice is None and trigger_price is not None:
-            raise ValidationError from ValueError(
+            raise ValidationError(
                 "Cannot update trigger price for a non trigger order"
             )
 
@@ -1671,7 +1922,7 @@ class HibachiApiClient:
 
         if quantity is None:
             if order.totalQuantity is None:
-                raise ValidationError from ValueError(
+                raise ValidationError(
                     "one of `quantity` or `order.totalQuantity` must be defined"
                 )
             quantity = order.totalQuantity
@@ -1841,7 +2092,7 @@ class HibachiApiClient:
             ]
             result["orders"] = orders  # type: ignore
             response = create_with(BatchResponse, result)
-        except (TypeError, IndexError, ValueError) as e:
+        except (KeyError, TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {result=}") from e
         return response
 
@@ -1887,6 +2138,11 @@ class HibachiApiClient:
     def __get_asset_id(self, coin: str) -> int:
         """Get the asset ID for a coin symbol.
 
+        The returned value is signed into withdrawal and transfer payloads, so it
+        must be deterministic. The exchange does not expose a dedicated asset
+        table on this endpoint, so the id is derived from the listed futures
+        contracts that settle in the requested coin.
+
         Args:
             coin: The coin symbol (e.g., "USDT")
 
@@ -1900,27 +2156,38 @@ class HibachiApiClient:
         if self._future_contracts is None:
             self.get_exchange_info()
 
-        # Find asset ID for the coin
-        asset_id: int | None = None
-        for contract in self.future_contracts.values():
-            if contract.settlementSymbol == coin:
-                asset_id = contract.id
-                break
+        # Find the asset ID for the coin.
+        #
+        # Every contract settling in `coin` matches, and the previous
+        # implementation took whichever one happened to come first in the
+        # response-ordered dictionary. Because the result is embedded in a signed
+        # payload, that made the signature depend on the exchange's contract
+        # ordering: adding or reordering a listing could silently change the
+        # signed asset id. Selecting the minimum matching id makes the lookup
+        # deterministic and, for a response returned in id order, identical to
+        # the previous result.
+        matching_ids = [
+            contract.id
+            for contract in self.future_contracts.values()
+            if contract.settlementSymbol == coin
+        ]
 
-        if asset_id is None:
+        if not matching_ids:
             known_coins = ", ".join(
-                set(
-                    contract.settlementSymbol
-                    for contract in self.future_contracts.values()
+                sorted(
+                    set(
+                        contract.settlementSymbol
+                        for contract in self.future_contracts.values()
+                    )
                 )
             )
             if not known_coins:
                 known_coins = "<none>"
-            raise ValidationError from ValueError(
+            raise ValidationError(
                 f"{coin=} not recognized by exchange. Known coins: {known_coins}"
             )
 
-        return asset_id
+        return min(matching_ids)
 
     def __get_contract(self, symbol: str) -> FutureContract:
         """Get the future contract metadata for a trading symbol.
@@ -1943,7 +2210,7 @@ class HibachiApiClient:
             known_symbols = ", ".join(self.future_contracts.keys())
             if not known_symbols:
                 known_symbols = "<none>"
-            raise ValidationError from ValueError(
+            raise ValidationError(
                 f"{symbol=} not recognized by exchange. Known symbols: {known_symbols}"
             )
 
@@ -1995,7 +2262,7 @@ class HibachiApiClient:
 
         """
         if order_id is None and nonce is None:
-            raise ValidationError from ValueError(
+            raise ValidationError(
                 "Either order_id or nonce must be provided"
             )
 
@@ -2060,6 +2327,9 @@ class HibachiApiClient:
         Returns:
             bytes: The binary payload to be signed
 
+        Raises:
+            ValidationError: If an order parameter is malformed or out of range
+
         """
         contract_id = contract.id
 
@@ -2069,7 +2339,7 @@ class HibachiApiClient:
             quantity_bytes = int(
                 quantity * pow(10, contract.underlyingDecimals)
             ).to_bytes(8, "big")
-            max_fees_percent_bytes = int(max_fees_percent * pow(10, 8)).to_bytes(
+            max_fees_percent_bytes = int(max_fees_percent * FEE_PERCENT_SCALE).to_bytes(
                 8, "big"
             )
         except ValueError as e:
@@ -2077,7 +2347,17 @@ class HibachiApiClient:
         except OverflowError as e:
             raise ValidationError(f"Order value out of range: {e}") from e
         price_bytes = b"" if price is None else price_to_bytes(price, contract)
-        side_bytes = (0 if side.value == "ASK" else 1).to_bytes(4, "big")
+
+        # Encode the side.
+        #
+        # The BID/ASK aliases BUY/SELL are normalized by every documented caller
+        # before reaching this point, but the previous expression
+        # (`0 if side.value == "ASK" else 1`) treated *any* non-ASK value as BID.
+        # A caller that reached this builder with Side.SELL would therefore have
+        # signed "BID" while submitting "ASK". Normalizing here and rejecting
+        # unknown values keeps the signed side and the transmitted side in
+        # agreement regardless of the entry point.
+        side_bytes = _side_to_bytes(side)
 
         payload = (
             nonce_bytes
@@ -2247,7 +2527,7 @@ class HibachiApiClient:
         if order_id is not None:
             return order_id.to_bytes(8, "big")
         if nonce is None:
-            raise ValidationError from ValueError(
+            raise ValidationError(
                 "either of 'order_id' or 'nonce' must be non-None"
             )
         return nonce.to_bytes(8, "big")
@@ -2328,6 +2608,6 @@ class HibachiApiClient:
                 order_id=o.order_id, nonce=o.nonce
             )
         else:
-            raise ValidationError from TypeError(f"Unexpected request type {type(o)}")
+            raise ValidationError(f"Unexpected request type {type(o)}")
         payload["action"] = o.action
         return payload
