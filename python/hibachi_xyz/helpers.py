@@ -7,7 +7,7 @@ API response handling, WebSocket management, and display formatting.
 import inspect
 import logging
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from functools import lru_cache
 from time import time
@@ -64,8 +64,32 @@ def get_hibachi_client() -> str:
 # REFLECTION UTILITIES
 # ============================================================================
 
+# Reflection results are cached per callable/signature. The number of distinct
+# constructors used by the SDK is small and fixed at import time, so a bounded
+# cache of this size never evicts in practice. A cache of size 1 would thrash to
+# a ~100% miss rate whenever responses of more than one type are deserialized in
+# sequence, which is the normal case.
+_REFLECTION_CACHE_SIZE = 256
 
-@lru_cache(maxsize=1)
+
+@lru_cache(maxsize=_REFLECTION_CACHE_SIZE)
+def _cached_signature(func: Callable[..., Any]) -> inspect.Signature:
+    """Return the (cached) signature of a callable.
+
+    ``inspect.signature`` is comparatively expensive and is called on every
+    deserialization, so the result is memoized per callable.
+
+    Args:
+        func: The callable to introspect.
+
+    Returns:
+        inspect.Signature: The signature of ``func``.
+
+    """
+    return inspect.signature(func)
+
+
+@lru_cache(maxsize=_REFLECTION_CACHE_SIZE)
 def _required_fields(signature: inspect.Signature) -> list[str]:
     """Extract list of required parameter names from a function signature.
 
@@ -85,7 +109,7 @@ def _required_fields(signature: inspect.Signature) -> list[str]:
     ]
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=_REFLECTION_CACHE_SIZE)
 def _required_nullable_fields(signature: inspect.Signature) -> list[str]:
     """Return names of parameters that are required and whose annotation allows None.
 
@@ -140,7 +164,7 @@ def create_with(
         Instance created by calling func with filtered data
 
     """
-    sig = inspect.signature(func)
+    sig = _cached_signature(func)
     valid_keys = sig.parameters.keys()
     filtered_data = {k: v for k, v in data.items() if k in valid_keys}
     if implicit_null:
@@ -239,17 +263,18 @@ def deserialize_batch_response_order(
 
     """
     try:
-        for k in list(data.keys()):
-            if data[k] is None:
-                del data[k]
-        if "errorCode" in data:
-            return create_with(ErrorBatchResponse, data)
-        elif "nonce" in data and "orderId" in data:
-            return create_with(CreateOrderBatchResponse, data)
-        elif "orderId" in data:
-            return create_with(UpdateOrderBatchResponse, data)
-        elif "nonce" in data:
-            return create_with(CancelOrderBatchResponse, data)
+        # Work on a shallow copy: the caller's dictionary must not be mutated,
+        # because the raw response is often reused for error reporting after a
+        # failed deserialization attempt.
+        fields = {k: v for k, v in data.items() if v is not None}
+        if "errorCode" in fields:
+            return create_with(ErrorBatchResponse, fields)
+        elif "nonce" in fields and "orderId" in fields:
+            return create_with(CreateOrderBatchResponse, fields)
+        elif "orderId" in fields:
+            return create_with(UpdateOrderBatchResponse, fields)
+        elif "nonce" in fields:
+            return create_with(CancelOrderBatchResponse, fields)
         else:
             raise DeserializationError(
                 f"Unknown batch response order format - missing required fields: {data}"
@@ -284,7 +309,16 @@ def check_maintenance_window(response: JsonObject) -> None:
         MaintenanceOutage: If status is anything other than "NORMAL", with a message containing human-readable UTC timestamps for scheduled windows
 
     """
-    # Only return early if status is NORMAL
+    # Only return early if status is NORMAL.
+    #
+    # A response that carries no "status" field at all is not evidence of an
+    # outage: most endpoints simply do not report exchange health. Treating a
+    # missing key as an outage produced a false "status: None" MaintenanceOutage
+    # for every such response, so absence is handled explicitly here and only an
+    # explicitly reported non-NORMAL status raises.
+    if "status" not in response:
+        return
+
     status = response.get("status")
     if status == "NORMAL":
         return
@@ -314,13 +348,21 @@ def check_maintenance_window(response: JsonObject) -> None:
         has_end = isinstance(end_timestamp, (int, float))
 
         if has_begin or has_end:
-            # Format begin time or use placeholder
+            # Format begin time or use placeholder.
+            #
+            # The exchange reports maintenance windows as Unix timestamps, which
+            # are timezone-independent. datetime.fromtimestamp() without a tz
+            # argument converts to the *local* zone, so the previous code
+            # rendered local wall-clock times and then labelled them "UTC" -
+            # wrong by the host's UTC offset. tz=timezone.utc makes the label
+            # accurate.
             if has_begin:
                 try:
-                    begin_time = datetime.fromtimestamp(begin_timestamp).strftime(  # type: ignore
-                        "%Y-%m-%d %H:%M:%S UTC"
-                    )
-                except (ValueError, OSError):
+                    begin_time = datetime.fromtimestamp(
+                        begin_timestamp,  # type: ignore
+                        tz=timezone.utc,
+                    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+                except (ValueError, OSError, OverflowError):
                     begin_time = "<unknown>"
             else:
                 begin_time = "<unknown>"
@@ -328,10 +370,11 @@ def check_maintenance_window(response: JsonObject) -> None:
             # Format end time or use placeholder
             if has_end:
                 try:
-                    end_time = datetime.fromtimestamp(end_timestamp).strftime(  # type: ignore
-                        "%Y-%m-%d %H:%M:%S UTC"
-                    )
-                except (ValueError, OSError):
+                    end_time = datetime.fromtimestamp(
+                        end_timestamp,  # type: ignore
+                        tz=timezone.utc,
+                    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+                except (ValueError, OSError, OverflowError):
                     end_time = "<unknown>"
             else:
                 end_time = "<unknown>"
@@ -362,7 +405,7 @@ def get_next_maintenance_window(
     if not windows:
         return None
 
-    now = datetime.now().timestamp()
+    now = datetime.now(tz=timezone.utc).timestamp()
     future_windows = [w for w in windows if w.begin > now]
 
     if not future_windows:
@@ -386,16 +429,29 @@ def format_maintenance_window(window_info: MaintenanceWindow | None) -> str:
     if window_info is None:
         return "No upcoming maintenance windows scheduled."
 
-    # Calculate time until maintenance starts
+    # Calculate time until maintenance starts.
+    # Both sides of the subtraction are naive local datetimes derived from the
+    # same clock, so the difference is correct; the formatted start time below is
+    # deliberately rendered in the host's local zone and is not labelled UTC.
     now = datetime.now()
     start_time = datetime.fromtimestamp(window_info.begin)
     time_until = start_time - now
 
-    duration_hours_raw = Decimal((window_info.end - window_info.begin) / 3600.0)
+    # Compute the duration in exact decimal arithmetic. Dividing as float first
+    # and only then wrapping in Decimal (the previous behaviour) preserved the
+    # float rounding error in the "exact" value.
+    duration_hours_raw = (
+        Decimal(str(window_info.end)) - Decimal(str(window_info.begin))
+    ) / Decimal(3600)
 
-    # Calculate days, hours, minutes
-    days = time_until.days
-    hours, remainder = divmod(time_until.seconds, 3600)
+    # Calculate days, hours, minutes.
+    # timedelta normalizes negatives as (days=-1, seconds=large), so decomposing
+    # .days/.seconds directly is only meaningful for a non-negative delta. Clamp
+    # to zero for a window that has already started rather than reporting a
+    # nonsensical countdown.
+    total_seconds = max(int(time_until.total_seconds()), 0)
+    days, remainder = divmod(total_seconds, 86_400)
+    hours, remainder = divmod(remainder, 3600)
     minutes, _ = divmod(remainder, 60)
 
     # Format the start time
@@ -437,18 +493,37 @@ def get_withdrawal_fee_for_amount(
     Returns:
         Fee percentage/amount for the withdrawal
 
+    Raises:
+        ValueError: If the exchange reported no instant withdrawal fee tiers
+
     """
     amount = numeric_to_decimal(amount)
     fees = exchange_info.feeConfig.instantWithdrawalFees
-    # Sort fees by threshold (highest first)
+    if not fees:
+        # Previously this fell through to sorted_fees[-1], raising an opaque
+        # IndexError. Fail with an explanatory error instead.
+        raise ValueError(
+            "Exchange reported no instant withdrawal fee tiers; "
+            "cannot determine a withdrawal fee"
+        )
+
+    # Sort fees by threshold (highest first) and return the fee for the highest
+    # threshold the amount reaches. Thresholds are compared as Decimal so that a
+    # Decimal amount is never widened to float for the comparison.
     sorted_fees = sorted(fees, key=lambda x: x[0], reverse=True)
 
     for threshold, fee in sorted_fees:
-        if amount >= threshold:
+        if amount >= numeric_to_decimal(threshold):
             return fee
 
-    # Default to highest fee if amount is below all thresholds
-    return sorted_fees[-1][1]
+    # Amount is below every tier threshold: charge the most expensive tier.
+    #
+    # The previous code returned sorted_fees[-1][1], i.e. the fee attached to the
+    # *lowest threshold*. That happens to be the highest fee only while the tier
+    # table is monotonically decreasing in fee as the threshold rises, which the
+    # exchange is not obliged to guarantee. Selecting the maximum fee explicitly
+    # makes the documented "highest fee" behaviour independent of tier ordering.
+    return max(fee for _threshold, fee in fees)
 
 
 # ============================================================================
