@@ -1105,12 +1105,18 @@ class AccountSnapshot:
 
 @dataclass
 class AccountTrade:
-    """Individual account trade record."""
+    """Individual account trade record.
 
-    askAccountId: int
-    askOrderId: int
-    bidAccountId: int
-    bidOrderId: int
+    askAccountId/bidAccountId are always None: the exchange stopped sending them
+    (ENG-9132, counterparty-identity redaction). askOrderId/bidOrderId carry only
+    the caller's own order id, on whichever side matches ``side``; the other is
+    None.
+    """
+
+    askAccountId: int | None
+    askOrderId: int | None
+    bidAccountId: int | None
+    bidOrderId: int | None
     fee: str
     id: int
     orderType: str

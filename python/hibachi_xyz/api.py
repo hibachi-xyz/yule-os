@@ -1123,7 +1123,10 @@ class HibachiApiClient:
             "GET", f"/trade/account/trades?accountId={self.account_id}"
         )
         try:
-            trades = [create_with(AccountTrade, trade) for trade in response["trades"]]  # type: ignore
+            trades = [
+                create_with(AccountTrade, trade, implicit_null=True)  # type: ignore[arg-type]
+                for trade in response["trades"]  # type: ignore[union-attr]
+            ]
             result = AccountTradesResponse(trades=trades)
         except (TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e

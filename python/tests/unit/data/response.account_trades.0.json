@@ -1,0 +1,38 @@
+{
+    "trades": [
+        {
+            "side": "BUY",
+            "bidOrderId": 555111,
+            "askOrderId": null,
+            "orderType": "LIMIT",
+            "symbol": "SOL/USDT-P",
+            "quantity": "10.5",
+            "price": "142.45",
+            "timestamp": 1756296000,
+            "timestamp_ns_partial": 0,
+            "id": 987654,
+            "realizedPnl": "12.50",
+            "fee": "0.75",
+            "is_taker": false,
+            "orderId": 555111,
+            "limitPrice": "142.40"
+        },
+        {
+            "side": "SELL",
+            "bidOrderId": null,
+            "askOrderId": 555222,
+            "orderType": "MARKET",
+            "symbol": "BTC/USDT-P",
+            "quantity": "0.05",
+            "price": "95430.00",
+            "timestamp": 1756296100,
+            "timestamp_ns_partial": 0,
+            "id": 987655,
+            "realizedPnl": "-3.10",
+            "fee": "1.20",
+            "is_taker": true,
+            "orderId": 555222,
+            "limitPrice": null
+        }
+    ]
+}
