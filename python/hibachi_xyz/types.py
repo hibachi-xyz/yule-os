@@ -473,6 +473,7 @@ class Order:
     status: OrderStatus
     symbol: str
     totalQuantity: str | None
+    triggerDirection: TriggerDirection | None
     triggerPrice: str | None
 
     def __init__(
@@ -493,6 +494,7 @@ class Order:
         creationTime: int | None = None,
         contractId: int | None = None,
         orderFlags: str | None = None,
+        triggerDirection: str | None = None,
         triggerPrice: str | None = None,
     ):
         """Initialize an Order instance.
@@ -514,6 +516,7 @@ class Order:
             creationTime: Timestamp when the order was created.
             contractId: Contract ID associated with the order.
             orderFlags: Additional order flags (POST_ONLY, IOC, REDUCE_ONLY).
+            triggerDirection: Direction for trigger orders (HIGH or LOW).
             triggerPrice: Trigger price for conditional orders.
 
         """
@@ -532,6 +535,9 @@ class Order:
         self.status = OrderStatus(status)
         self.symbol = symbol
         self.totalQuantity = totalQuantity
+        self.triggerDirection = (
+            TriggerDirection(triggerDirection) if triggerDirection else None
+        )
         self.triggerPrice = triggerPrice
         self.orderFlags = OrderFlags(orderFlags) if orderFlags else None
 
@@ -1099,12 +1105,18 @@ class AccountSnapshot:
 
 @dataclass
 class AccountTrade:
-    """Individual account trade record."""
+    """Individual account trade record.
 
-    askAccountId: int
-    askOrderId: int
-    bidAccountId: int
-    bidOrderId: int
+    askAccountId/bidAccountId are always None: the exchange does not disclose
+    the identity of the other side of a fill. askOrderId/bidOrderId carry only
+    the caller's own order id, on whichever side matches ``side``; the other is
+    None.
+    """
+
+    askAccountId: int | None
+    askOrderId: int | None
+    bidAccountId: int | None
+    bidOrderId: int | None
     fee: str
     id: int
     orderType: str

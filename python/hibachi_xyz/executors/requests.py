@@ -24,6 +24,8 @@ from hibachi_xyz.helpers import (
 )
 from hibachi_xyz.types import Json
 
+DEFAULT_TIMEOUT = 30.0
+
 
 class RequestsHttpExecutor(HttpExecutor):
     """HTTP executor implementation using requests.
@@ -36,6 +38,7 @@ class RequestsHttpExecutor(HttpExecutor):
         api_url: str = DEFAULT_API_URL,
         data_api_url: str = DEFAULT_DATA_API_URL,
         api_key: str | None = None,
+        timeout_seconds: float = DEFAULT_TIMEOUT,
     ):
         """Initialize the RequestsHttpExecutor with API configuration.
 
@@ -43,11 +46,13 @@ class RequestsHttpExecutor(HttpExecutor):
             api_url: The base URL for authenticated API requests. Defaults to DEFAULT_API_URL.
             data_api_url: The base URL for unauthenticated data API requests. Defaults to DEFAULT_DATA_API_URL.
             api_key: The API key for authenticated requests. Optional.
+            timeout_seconds: Timeout applied to each requests call, in seconds.
 
         """
         self.api_url = api_url
         self.data_api_url = data_api_url
         self.api_key = api_key
+        self.timeout_seconds = timeout_seconds
 
     @override
     def send_simple_request(self, path: str) -> HttpResponse:
@@ -70,12 +75,13 @@ class RequestsHttpExecutor(HttpExecutor):
             response = requests.get(
                 url,
                 headers={"Hibachi-Client": get_hibachi_client()},
+                timeout=self.timeout_seconds,
             )
         except BaseError:
             raise
         except requests.Timeout as e:
             raise TransportTimeoutError(
-                f"Request to {url} timed out", timeout_seconds=None
+                f"Request to {url} timed out", timeout_seconds=self.timeout_seconds
             ) from e
         except requests.ConnectionError as e:
             raise HttpConnectionError(f"Failed to connect to {url}", url=url) from e
@@ -116,12 +122,19 @@ class RequestsHttpExecutor(HttpExecutor):
                 "Hibachi-Client": get_hibachi_client(),
             }
 
-            response = requests.request(method, url, headers=headers, data=request_body)
+            response = requests.request(
+                method,
+                url,
+                headers=headers,
+                data=request_body,
+                timeout=self.timeout_seconds,
+            )
         except BaseError:
             raise
         except requests.Timeout as e:
             raise TransportTimeoutError(
-                f"{method} request to {url} timed out", timeout_seconds=None
+                f"{method} request to {url} timed out",
+                timeout_seconds=self.timeout_seconds,
             ) from e
         except requests.ConnectionError as e:
             raise HttpConnectionError(f"Failed to connect to {url}", url=url) from e

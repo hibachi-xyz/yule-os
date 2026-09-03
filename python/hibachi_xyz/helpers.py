@@ -31,6 +31,7 @@ from hibachi_xyz.types import (
     HibachiNumericInput,
     Json,
     JsonObject,
+    JsonValue,
     MaintenanceWindow,
     UpdateOrderBatchResponse,
     numeric_to_decimal,
@@ -152,6 +153,31 @@ def create_with(
         filtered_data.update({field: None for field in missing_fields})
 
     return func(**filtered_data)
+
+
+def create_list_with(
+    func: Callable[..., T], items: JsonValue, *, implicit_null: bool = False
+) -> list[T]:
+    """Create a list of objects from a JSON array of records.
+
+    Thin wrapper around create_with for the common "list of records" response
+    shape (trades, positions, transactions, order book levels, ...). Centralizes
+    the type: ignore needed to index into the loosely typed Json/JsonValue union,
+    so individual call sites don't each need their own.
+
+    Args:
+        func: Constructor or factory function to call for each item
+        items: JSON array of objects to construct func from
+        implicit_null: Forwarded to create_with for each item
+
+    Returns:
+        List of instances created by calling func on each item
+
+    """
+    return [
+        create_with(func, item, implicit_null=implicit_null)  # type: ignore[arg-type]
+        for item in items  # type: ignore[union-attr]
+    ]
 
 
 # ============================================================================
