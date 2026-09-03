@@ -324,6 +324,13 @@ def test_get_account_trades():
 
     for trade in trades_response.trades:
         assert isinstance(trade, AccountTrade)
+        # The exchange never discloses the counterparty's identity: these must
+        # be None on every live response, not just absent-and-defaulted.
+        assert trade.askAccountId is None
+        assert trade.bidAccountId is None
+        # The counterparty's order id must never appear: at most one side is
+        # ever populated (the caller's own, when known), never both.
+        assert trade.askOrderId is None or trade.bidOrderId is None
 
 
 def test_get_settlements_history():
