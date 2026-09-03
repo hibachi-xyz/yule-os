@@ -38,6 +38,7 @@ from hibachi_xyz.helpers import (
     DEFAULT_DATA_API_URL,
     absolute_creation_deadline,
     check_maintenance_window,
+    create_list_with,
     create_with,
 )
 from hibachi_xyz.types import (
@@ -1102,6 +1103,9 @@ class HibachiApiClient:
         """Get account trade history.
 
         Retrieves the most recent trade history for your account, up to 100 records.
+        The counterparty's identity is never disclosed: ``AccountTrade.askAccountId``/
+        ``bidAccountId`` are always None, and only the caller's own order id is
+        populated on ``askOrderId``/``bidOrderId``.
 
         Returns:
             AccountTradesResponse: List of recent trades with details including price,
@@ -1123,10 +1127,9 @@ class HibachiApiClient:
             "GET", f"/trade/account/trades?accountId={self.account_id}"
         )
         try:
-            trades = [
-                create_with(AccountTrade, trade, implicit_null=True)  # type: ignore[arg-type]
-                for trade in response["trades"]  # type: ignore[union-attr]
-            ]
+            trades = create_list_with(
+                AccountTrade, response["trades"], implicit_null=True
+            )
             result = AccountTradesResponse(trades=trades)
         except (TypeError, IndexError, ValueError) as e:
             raise DeserializationError(f"Received invalid response {response=}") from e

@@ -1107,8 +1107,8 @@ class AccountSnapshot:
 class AccountTrade:
     """Individual account trade record.
 
-    askAccountId/bidAccountId are always None: the exchange stopped sending them
-    (ENG-9132, counterparty-identity redaction). askOrderId/bidOrderId carry only
+    askAccountId/bidAccountId are always None: the exchange does not disclose
+    the identity of the other side of a fill. askOrderId/bidOrderId carry only
     the caller's own order id, on whichever side matches ``side``; the other is
     None.
     """
